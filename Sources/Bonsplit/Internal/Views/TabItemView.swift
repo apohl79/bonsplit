@@ -139,6 +139,7 @@ struct TabItemView: View {
             minHeight: TabBarMetrics.tabHeight,
             maxHeight: TabBarMetrics.tabHeight
         )
+        .padding(.bottom, isSelected ? 1 : 0)
         .background(tabBackground.saturation(saturation))
         .animation(.easeInOut(duration: 0.14), value: showsShortcutHint)
         .contentShape(Rectangle())
@@ -362,11 +363,6 @@ struct TabItemView: View {
     @ViewBuilder
     private var tabBackground: some View {
         ZStack(alignment: .top) {
-            if isSelected {
-                Rectangle()
-                    .fill(TabBarColors.activeTabBackground(for: appearance))
-            }
-
             // Background fill (hover)
             if TabItemStyling.shouldShowHoverBackground(isHovered: isHovered, isSelected: isSelected) {
                 Rectangle()

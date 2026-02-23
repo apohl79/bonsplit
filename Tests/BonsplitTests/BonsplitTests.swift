@@ -519,4 +519,18 @@ final class BonsplitTests: XCTestCase {
             TabItemStyling.shouldShowHoverBackground(isHovered: false, isSelected: false)
         )
     }
+
+    func testTabBarSeparatorSegmentsClampGapIntoBounds() {
+        var segments = TabBarStyling.separatorSegments(totalWidth: 100, gap: -20...40)
+        XCTAssertEqual(segments.left, 0, accuracy: 0.0001)
+        XCTAssertEqual(segments.right, 60, accuracy: 0.0001)
+
+        segments = TabBarStyling.separatorSegments(totalWidth: 100, gap: 25...120)
+        XCTAssertEqual(segments.left, 25, accuracy: 0.0001)
+        XCTAssertEqual(segments.right, 0, accuracy: 0.0001)
+
+        segments = TabBarStyling.separatorSegments(totalWidth: 100, gap: nil)
+        XCTAssertEqual(segments.left, 100, accuracy: 0.0001)
+        XCTAssertEqual(segments.right, 0, accuracy: 0.0001)
+    }
 }

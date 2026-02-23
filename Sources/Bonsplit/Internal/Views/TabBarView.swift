@@ -2,6 +2,36 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 
+private struct SelectedTabFramePreferenceKey: PreferenceKey {
+    static let defaultValue: CGRect? = nil
+
+    static func reduce(value: inout CGRect?, nextValue: () -> CGRect?) {
+        if let next = nextValue() {
+            value = next
+        }
+    }
+}
+
+enum TabBarStyling {
+    static func separatorSegments(
+        totalWidth: CGFloat,
+        gap: ClosedRange<CGFloat>?
+    ) -> (left: CGFloat, right: CGFloat) {
+        let clampedTotal = max(0, totalWidth)
+        guard let gap else {
+            return (left: clampedTotal, right: 0)
+        }
+
+        let start = min(max(gap.lowerBound, 0), clampedTotal)
+        let end = min(max(gap.upperBound, 0), clampedTotal)
+        let normalizedStart = min(start, end)
+        let normalizedEnd = max(start, end)
+        let left = max(0, normalizedStart)
+        let right = max(0, clampedTotal - normalizedEnd)
+        return (left: left, right: right)
+    }
+}
+
 struct TabContextMenuState {
     let isPinned: Bool
     let isUnread: Bool
@@ -34,6 +64,7 @@ struct TabBarView: View {
     @State private var scrollOffset: CGFloat = 0
     @State private var contentWidth: CGFloat = 0
     @State private var containerWidth: CGFloat = 0
+    @State private var selectedTabFrameInBar: CGRect?
     @StateObject private var controlKeyMonitor = TabControlShortcutKeyMonitor()
 
     private var canScrollLeft: Bool {
@@ -145,6 +176,7 @@ struct TabBarView: View {
             }
         }
         .frame(height: TabBarMetrics.barHeight)
+        .coordinateSpace(name: "tabBar")
         .contentShape(Rectangle())
         .background(tabBarBackground)
         .background(
@@ -169,6 +201,9 @@ struct TabBarView: View {
         }
         .onAppear {
             controlKeyMonitor.start()
+        }
+        .onPreferenceChange(SelectedTabFramePreferenceKey.self) { frame in
+            selectedTabFrameInBar = frame
         }
         .onDisappear {
             controlKeyMonitor.stop()
@@ -213,6 +248,16 @@ struct TabBarView: View {
             },
             onContextAction: { action in
                 controller.requestTabContextAction(action, for: TabID(id: tab.id), inPane: pane.id)
+            }
+        )
+        .background(
+            GeometryReader { geometry in
+                Color.clear.preference(
+                    key: SelectedTabFramePreferenceKey.self,
+                    value: pane.selectedTabId == tab.id
+                        ? geometry.frame(in: .named("tabBar"))
+                        : nil
+                )
             }
         )
         .onDrag {
@@ -467,16 +512,34 @@ struct TabBarView: View {
 
     @ViewBuilder
     private var tabBarBackground: some View {
+        let barFill = isFocused
+            ? TabBarColors.barBackground(for: appearance)
+            : TabBarColors.barBackground(for: appearance).opacity(0.95)
+
         Rectangle()
-            .fill(
-                isFocused
-                    ? TabBarColors.barBackground(for: appearance)
-                    : TabBarColors.barBackground(for: appearance).opacity(0.95)
-            )
+            .fill(barFill)
             .overlay(alignment: .bottom) {
-                Rectangle()
-                    .fill(TabBarColors.separator(for: appearance))
-                    .frame(height: 1)
+                GeometryReader { geometry in
+                    let separator = TabBarColors.separator(for: appearance)
+                    let gapRange: ClosedRange<CGFloat>? = selectedTabFrameInBar.map { frame in
+                        frame.minX...frame.maxX
+                    }
+                    let segments = TabBarStyling.separatorSegments(
+                        totalWidth: geometry.size.width,
+                        gap: gapRange
+                    )
+
+                    HStack(spacing: 0) {
+                        Rectangle()
+                            .fill(separator)
+                            .frame(width: segments.left, height: 1)
+                        Spacer(minLength: 0)
+                        Rectangle()
+                            .fill(separator)
+                            .frame(width: segments.right, height: 1)
+                    }
+                }
+                .frame(height: 1)
             }
     }
 }
