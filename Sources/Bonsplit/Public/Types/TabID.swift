@@ -8,6 +8,14 @@ public struct TabID: Hashable, Codable, Sendable {
         self.id = UUID()
     }
 
+    public init(uuid: UUID) {
+        self.id = uuid
+    }
+
+    public var uuid: UUID {
+        id
+    }
+
     internal init(id: UUID) {
         self.id = id
     }

@@ -6,6 +6,23 @@ import SwiftUI
 @Observable
 public final class BonsplitController {
 
+    public struct ExternalTabDropRequest {
+        public enum Destination {
+            case insert(targetPane: PaneID, targetIndex: Int?)
+            case split(targetPane: PaneID, orientation: SplitOrientation, insertFirst: Bool)
+        }
+
+        public let tabId: TabID
+        public let sourcePaneId: PaneID
+        public let destination: Destination
+
+        public init(tabId: TabID, sourcePaneId: PaneID, destination: Destination) {
+            self.tabId = tabId
+            self.sourcePaneId = sourcePaneId
+            self.destination = destination
+        }
+    }
+
     // MARK: - Delegate
 
     /// Delegate for receiving callbacks about tab bar events
@@ -29,6 +46,10 @@ public final class BonsplitController {
     @ObservationIgnored public var onFileDrop: ((_ urls: [URL], _ paneId: PaneID) -> Bool)? {
         didSet { internalController.onFileDrop = onFileDrop }
     }
+
+    /// Handler for tab drops originating from another Bonsplit controller.
+    /// Return `true` when the host application handled the move.
+    @ObservationIgnored public var onExternalTabDrop: ((ExternalTabDropRequest) -> Bool)?
 
     // MARK: - Internal State
 

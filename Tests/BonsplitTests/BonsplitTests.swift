@@ -115,6 +115,146 @@ final class BonsplitTests: XCTestCase {
         XCTAssertTrue(controller.configuration.allowCloseTabs)
     }
 
+    func testConfigurationSupportsContentManagedDropOverlayKinds() {
+        let config = BonsplitConfiguration(
+            contentManagedDropOverlayTabKinds: ["terminal"]
+        )
+        XCTAssertEqual(config.contentManagedDropOverlayTabKinds, ["terminal"])
+    }
+
+    func testPaneDropPlaceholderPolicyRespectsContentManagedKinds() {
+        XCTAssertFalse(
+            PaneDropOverlayPolicy.shouldRenderSwiftUIDropPlaceholder(
+                selectedTabKind: "terminal",
+                contentManagedKinds: ["terminal"]
+            )
+        )
+        XCTAssertTrue(
+            PaneDropOverlayPolicy.shouldRenderSwiftUIDropPlaceholder(
+                selectedTabKind: "browser",
+                contentManagedKinds: ["terminal"]
+            )
+        )
+        XCTAssertTrue(
+            PaneDropOverlayPolicy.shouldRenderSwiftUIDropPlaceholder(
+                selectedTabKind: nil,
+                contentManagedKinds: ["terminal"]
+            )
+        )
+    }
+
+    func testPaneDropOverlayVisibilityIsOwnedByActivePane() {
+        let paneA = PaneID()
+        let paneB = PaneID()
+
+        XCTAssertEqual(
+            PaneDropOverlayPolicy.visibleDropZone(
+                for: paneA,
+                activePaneId: paneA,
+                activeZone: .right
+            ),
+            .right
+        )
+        XCTAssertNil(
+            PaneDropOverlayPolicy.visibleDropZone(
+                for: paneB,
+                activePaneId: paneA,
+                activeZone: .right
+            )
+        )
+        XCTAssertNil(
+            PaneDropOverlayPolicy.visibleDropZone(
+                for: paneA,
+                activePaneId: nil,
+                activeZone: .right
+            )
+        )
+    }
+
+    func testPaneDropOverlayUpdatePolicyRejectsStaleNonOwnerUpdates() {
+        let paneA = PaneID()
+        let paneB = PaneID()
+
+        XCTAssertTrue(
+            PaneDropOverlayPolicy.shouldAcceptDropUpdate(
+                for: paneA,
+                activePaneId: nil
+            )
+        )
+        XCTAssertTrue(
+            PaneDropOverlayPolicy.shouldAcceptDropUpdate(
+                for: paneA,
+                activePaneId: paneA
+            )
+        )
+        XCTAssertFalse(
+            PaneDropOverlayPolicy.shouldAcceptDropUpdate(
+                for: paneA,
+                activePaneId: paneB
+            )
+        )
+    }
+
+    func testTabTransferDataMarksCurrentProcessPayload() {
+        let transfer = TabTransferData(
+            tab: TabItem(title: "Drag", icon: "terminal.fill"),
+            sourcePaneId: UUID()
+        )
+        XCTAssertTrue(transfer.isFromCurrentProcess)
+    }
+
+    func testTabTransferDataLegacyPayloadDefaultsToForeignProcess() throws {
+        let original = TabTransferData(
+            tab: TabItem(title: "Drag", icon: "terminal.fill"),
+            sourcePaneId: UUID()
+        )
+        let encoded = try JSONEncoder().encode(original)
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        json.removeValue(forKey: "sourceProcessId")
+        let legacyData = try JSONSerialization.data(withJSONObject: json)
+
+        let decoded = try JSONDecoder().decode(TabTransferData.self, from: legacyData)
+        XCTAssertFalse(decoded.isFromCurrentProcess)
+    }
+
+    @MainActor
+    func testDropTargetClearDefersForDropExitedDuringActiveDrag() async {
+        let controller = SplitViewController()
+        let pane = controller.focusedPaneId!
+        controller.draggingTab = TabItem(title: "Drag", icon: "terminal.fill")
+        controller.setActiveDropTarget(paneId: pane, zone: .top)
+
+        controller.clearActiveDropTarget(for: pane, reason: "dropExited")
+
+        // During drag handoff, clear is deferred by one turn to avoid one-frame flashes.
+        XCTAssertEqual(controller.activeDropPaneId, pane)
+        XCTAssertEqual(controller.activeDropZone, .top)
+
+        await Task.yield()
+        await Task.yield()
+
+        XCTAssertNil(controller.activeDropPaneId)
+        XCTAssertNil(controller.activeDropZone)
+    }
+
+    @MainActor
+    func testDropTargetDeferredClearCancelsWhenNewOwnerArrives() async {
+        let controller = SplitViewController()
+        let paneA = controller.focusedPaneId!
+        let paneB = PaneID()
+        controller.draggingTab = TabItem(title: "Drag", icon: "terminal.fill")
+        controller.setActiveDropTarget(paneId: paneA, zone: .top)
+
+        controller.clearActiveDropTarget(for: paneA, reason: "dropExited")
+        controller.setActiveDropTarget(paneId: paneB, zone: .right)
+
+        await Task.yield()
+        await Task.yield()
+
+        XCTAssertEqual(controller.activeDropPaneId, paneB)
+        XCTAssertEqual(controller.activeDropZone, .right)
+    }
+
     func testDefaultSplitButtonTooltips() {
         let defaults = BonsplitConfiguration.SplitButtonTooltips.default
         XCTAssertEqual(defaults.newTerminal, "New Terminal")

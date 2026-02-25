@@ -42,6 +42,14 @@ final class SplitViewController {
     var dragHiddenSourceTabId: UUID?
     var dragHiddenSourcePaneId: PaneID?
 
+    /// Single source of truth for pane-edge drop overlay ownership.
+    /// Only this pane should render a drop zone at any time.
+    var activeDropPaneId: PaneID?
+    var activeDropZone: DropZone?
+    @ObservationIgnored private var lastDropUpdateUptimeByPane: [PaneID: TimeInterval] = [:]
+    @ObservationIgnored private var lastDropUpdateZoneByPane: [PaneID: DropZone] = [:]
+    @ObservationIgnored private var dropTargetClearToken: UInt64 = 0
+
     /// Current frame of the entire split view container
     var containerFrame: CGRect = .zero
 
@@ -67,6 +75,127 @@ final class SplitViewController {
     }
 
     // MARK: - Focus Management
+
+    func setActiveDropTarget(paneId: PaneID, zone: DropZone) {
+        // Cancel a pending deferred clear when ownership is reaffirmed in the same drag turn.
+        dropTargetClearToken &+= 1
+        let oldPane = activeDropPaneId
+        let oldZone = activeDropZone
+        guard oldPane != paneId || oldZone != zone else { return }
+#if DEBUG
+        dlog(
+            "pane.dropTarget oldPane=\(oldPane.map { String($0.id.uuidString.prefix(5)) } ?? "nil") " +
+            "oldZone=\(oldZone.map { String(describing: $0) } ?? "none") " +
+            "newPane=\(paneId.id.uuidString.prefix(5)) newZone=\(zone)"
+        )
+#endif
+        if let oldPane, oldPane != paneId {
+            clearDropUpdateTiming(for: oldPane, reason: "ownerChanged")
+        }
+        activeDropPaneId = paneId
+        activeDropZone = zone
+    }
+
+    func clearActiveDropTarget(for paneId: PaneID? = nil, reason: String? = nil) {
+        if let paneId, activeDropPaneId != paneId {
+            return
+        }
+        guard activeDropPaneId != nil || activeDropZone != nil else { return }
+        let clearReason = reason ?? "unspecified"
+        let dragInProgress = draggingTab != nil || activeDragTab != nil
+        let shouldDefer = clearReason == "dropExited" && dragInProgress
+
+        if shouldDefer {
+            let expectedPaneUUID = activeDropPaneId?.id
+            let expectedZone = activeDropZone
+            dropTargetClearToken &+= 1
+            let clearToken = dropTargetClearToken
+#if DEBUG
+            dlog(
+                "pane.dropTarget.clear.defer pane=\(expectedPaneUUID.map { String($0.uuidString.prefix(5)) } ?? "nil") " +
+                "zone=\(expectedZone.map { String(describing: $0) } ?? "none") reason=\(clearReason)"
+            )
+#endif
+            Task { @MainActor [weak self] in
+                await Task.yield()
+                guard let self else { return }
+                guard self.dropTargetClearToken == clearToken else {
+#if DEBUG
+                    dlog("pane.dropTarget.clear.deferSkip reason=tokenInvalidated")
+#endif
+                    return
+                }
+                guard self.activeDropPaneId?.id == expectedPaneUUID,
+                      self.activeDropZone == expectedZone else {
+#if DEBUG
+                    dlog("pane.dropTarget.clear.deferSkip reason=ownerChanged")
+#endif
+                    return
+                }
+                self.applyActiveDropTargetClear(reason: clearReason, clearTimingFor: self.activeDropPaneId)
+            }
+            return
+        }
+
+        // Invalidate any pending deferred clear before doing an immediate clear.
+        dropTargetClearToken &+= 1
+        applyActiveDropTargetClear(reason: clearReason, clearTimingFor: paneId)
+    }
+
+    private func applyActiveDropTargetClear(reason: String, clearTimingFor paneId: PaneID?) {
+#if DEBUG
+        dlog(
+            "pane.dropTarget.clear pane=\(activeDropPaneId.map { String($0.id.uuidString.prefix(5)) } ?? "nil") " +
+            "zone=\(activeDropZone.map { String(describing: $0) } ?? "none") " +
+            "reason=\(reason)"
+        )
+#endif
+        activeDropPaneId = nil
+        activeDropZone = nil
+        clearDropUpdateTiming(for: paneId, reason: "dropTargetCleared")
+    }
+
+    /// Record drop-update cadence so we can detect stutters while dragging.
+    /// A long delta between updates usually indicates a frame drop in drag handling.
+    func noteDropUpdateTiming(paneId: PaneID, zone: DropZone, event: String) {
+        let now = ProcessInfo.processInfo.systemUptime
+        let last = lastDropUpdateUptimeByPane[paneId]
+        let previousZone = lastDropUpdateZoneByPane[paneId]
+        lastDropUpdateUptimeByPane[paneId] = now
+        lastDropUpdateZoneByPane[paneId] = zone
+
+        guard let last else { return }
+        let deltaMs = (now - last) * 1000
+        guard deltaMs >= 20 else { return }
+
+#if DEBUG
+        let severity: String = deltaMs >= 40 ? "jank" : "slow"
+        dlog(
+            "pane.dropTiming.\(severity) pane=\(paneId.id.uuidString.prefix(5)) event=\(event) " +
+            "zone=\(zone) prevZone=\(previousZone.map { String(describing: $0) } ?? "none") " +
+            "owner=\(activeDropPaneId?.id.uuidString.prefix(5) ?? "nil") " +
+            "deltaMs=\(String(format: "%.1f", deltaMs))"
+        )
+#endif
+    }
+
+    func clearDropUpdateTiming(for paneId: PaneID? = nil, reason: String) {
+        if let paneId {
+            lastDropUpdateUptimeByPane.removeValue(forKey: paneId)
+            lastDropUpdateZoneByPane.removeValue(forKey: paneId)
+#if DEBUG
+            dlog("pane.dropTiming.clear pane=\(paneId.id.uuidString.prefix(5)) reason=\(reason)")
+#endif
+            return
+        }
+
+        guard !lastDropUpdateUptimeByPane.isEmpty || !lastDropUpdateZoneByPane.isEmpty else { return }
+        lastDropUpdateUptimeByPane.removeAll(keepingCapacity: false)
+        lastDropUpdateZoneByPane.removeAll(keepingCapacity: false)
+#if DEBUG
+        dlog("pane.dropTiming.clear pane=all reason=\(reason)")
+#endif
+    }
 
     /// Set focus to a specific pane
     func focusPane(_ paneId: PaneID) {

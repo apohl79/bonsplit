@@ -53,6 +53,11 @@ public struct BonsplitConfiguration: Sendable {
     /// Controls where new tabs are inserted in the tab list
     public var newTabPosition: NewTabPosition
 
+    /// Tab kinds whose content renders pane-drop overlays externally (for example,
+    /// portal-hosted views). When a selected tab's kind is in this set, Bonsplit
+    /// suppresses its built-in SwiftUI placeholder overlay to avoid double rendering.
+    public var contentManagedDropOverlayTabKinds: Set<String>
+
     // MARK: - Appearance
 
     /// Tab bar appearance customization
@@ -85,6 +90,7 @@ public struct BonsplitConfiguration: Sendable {
         autoCloseEmptyPanes: Bool = true,
         contentViewLifecycle: ContentViewLifecycle = .recreateOnSwitch,
         newTabPosition: NewTabPosition = .current,
+        contentManagedDropOverlayTabKinds: Set<String> = [],
         appearance: Appearance = .default
     ) {
         self.allowSplits = allowSplits
@@ -95,6 +101,7 @@ public struct BonsplitConfiguration: Sendable {
         self.autoCloseEmptyPanes = autoCloseEmptyPanes
         self.contentViewLifecycle = contentViewLifecycle
         self.newTabPosition = newTabPosition
+        self.contentManagedDropOverlayTabKinds = contentManagedDropOverlayTabKinds
         self.appearance = appearance
     }
 }

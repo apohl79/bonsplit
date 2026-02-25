@@ -47,6 +47,32 @@ enum PaneDropLifecycle {
     case hovering
 }
 
+enum PaneDropOverlayPolicy {
+    static func shouldRenderSwiftUIDropPlaceholder(
+        selectedTabKind: String?,
+        contentManagedKinds: Set<String>
+    ) -> Bool {
+        guard let selectedTabKind else { return true }
+        return !contentManagedKinds.contains(selectedTabKind)
+    }
+
+    static func visibleDropZone(
+        for paneId: PaneID,
+        activePaneId: PaneID?,
+        activeZone: DropZone?
+    ) -> DropZone? {
+        guard activePaneId == paneId else { return nil }
+        return activeZone
+    }
+
+    static func shouldAcceptDropUpdate(
+        for paneId: PaneID,
+        activePaneId: PaneID?
+    ) -> Bool {
+        activePaneId == nil || activePaneId == paneId
+    }
+}
+
 /// Container for a single pane with its tab bar and content area
 struct PaneContainerView<Content: View, EmptyContent: View>: View {
     @Environment(BonsplitController.self) private var bonsplitController
@@ -58,7 +84,6 @@ struct PaneContainerView<Content: View, EmptyContent: View>: View {
     var showSplitButtons: Bool = true
     var contentViewLifecycle: ContentViewLifecycle = .recreateOnSwitch
 
-    @State private var activeDropZone: DropZone?
     @State private var dropLifecycle: PaneDropLifecycle = .idle
 
     private var isFocused: Bool {
@@ -71,6 +96,25 @@ struct PaneContainerView<Content: View, EmptyContent: View>: View {
 
     private var isTabDragActive: Bool {
         controller.draggingTab != nil || controller.activeDragTab != nil
+    }
+
+    private var selectedTab: TabItem? {
+        pane.selectedTab ?? pane.tabs.first
+    }
+
+    private var shouldRenderSwiftUIDropPlaceholder: Bool {
+        PaneDropOverlayPolicy.shouldRenderSwiftUIDropPlaceholder(
+            selectedTabKind: selectedTab?.kind,
+            contentManagedKinds: bonsplitController.configuration.contentManagedDropOverlayTabKinds
+        )
+    }
+
+    private var activeDropZone: DropZone? {
+        PaneDropOverlayPolicy.visibleDropZone(
+            for: pane.id,
+            activePaneId: controller.activeDropPaneId,
+            activeZone: controller.activeDropZone
+        )
     }
 
     var body: some View {
@@ -98,7 +142,7 @@ struct PaneContainerView<Content: View, EmptyContent: View>: View {
             )
 #endif
             if newValue == nil {
-                activeDropZone = nil
+                controller.clearActiveDropTarget(reason: "draggingTabCleared")
                 dropLifecycle = .idle
             }
         }
@@ -106,11 +150,12 @@ struct PaneContainerView<Content: View, EmptyContent: View>: View {
 #if DEBUG
             let oldZone = oldValue.map { String(describing: $0) } ?? "none"
             let newZone = newValue.map { String(describing: $0) } ?? "none"
-            let selected = pane.selectedTab ?? pane.tabs.first
+            let selected = selectedTab
             let icon = selected?.icon ?? "nil"
+            let kind = selected?.kind ?? "nil"
             dlog(
                 "pane.overlayZone pane=\(pane.id.id.uuidString.prefix(5)) " +
-                "old=\(oldZone) new=\(newZone) selectedIcon=\(icon)"
+                "old=\(oldZone) new=\(newZone) selectedIcon=\(icon) selectedKind=\(kind)"
             )
 #endif
         }
@@ -131,7 +176,10 @@ struct PaneContainerView<Content: View, EmptyContent: View>: View {
                 dropZonesLayer(size: size)
 
                 // Visual placeholder (non-interactive)
-                dropPlaceholder(for: activeDropZone, in: size)
+                dropPlaceholder(
+                    for: shouldRenderSwiftUIDropPlaceholder ? activeDropZone : nil,
+                    in: size
+                )
                     .allowsHitTesting(false)
             }
             .frame(width: size.width, height: size.height)
@@ -222,7 +270,6 @@ struct PaneContainerView<Content: View, EmptyContent: View>: View {
                     pane: pane,
                     controller: controller,
                     bonsplitController: bonsplitController,
-                    activeDropZone: $activeDropZone,
                     dropLifecycle: $dropLifecycle
                 ))
         }
@@ -280,7 +327,6 @@ struct UnifiedPaneDropDelegate: DropDelegate {
     let pane: PaneState
     let controller: SplitViewController
     let bonsplitController: BonsplitController
-    @Binding var activeDropZone: DropZone?
     @Binding var dropLifecycle: PaneDropLifecycle
 
     // Calculate zone based on position within the view
@@ -324,12 +370,44 @@ struct UnifiedPaneDropDelegate: DropDelegate {
         // may not have propagated yet when performDrop runs.
         guard let draggedTab = controller.activeDragTab ?? controller.draggingTab,
               let sourcePaneId = controller.activeDragSourcePaneId ?? controller.dragSourcePaneId else {
-            return false
+            guard let transfer = decodeTransfer(from: info),
+                  transfer.isFromCurrentProcess else {
+                controller.clearActiveDropTarget(reason: "performDropNoDrag")
+                dropLifecycle = .idle
+                return false
+            }
+            let destination: BonsplitController.ExternalTabDropRequest.Destination
+            if zone == .center {
+                destination = .insert(targetPane: pane.id, targetIndex: nil)
+            } else if let orientation = zone.orientation {
+                destination = .split(
+                    targetPane: pane.id,
+                    orientation: orientation,
+                    insertFirst: zone.insertsFirst
+                )
+            } else {
+                controller.clearActiveDropTarget(reason: "performDropNoDestination")
+                dropLifecycle = .idle
+                return false
+            }
+            let request = BonsplitController.ExternalTabDropRequest(
+                tabId: TabID(id: transfer.tab.id),
+                sourcePaneId: PaneID(id: transfer.sourcePaneId),
+                destination: destination
+            )
+            let handled = bonsplitController.onExternalTabDrop?(request) ?? false
+            if handled {
+                dropLifecycle = .idle
+                controller.clearActiveDropTarget(reason: "performDropExternal")
+            } else {
+                controller.clearActiveDropTarget(reason: "performDropExternalUnhandled")
+            }
+            return handled
         }
 
         // Clear both observable and non-observable drag state.
         dropLifecycle = .idle
-        activeDropZone = nil
+        controller.clearActiveDropTarget(reason: "performDrop")
         controller.draggingTab = nil
         controller.dragSourcePaneId = nil
         controller.activeDragTab = nil
@@ -370,7 +448,8 @@ struct UnifiedPaneDropDelegate: DropDelegate {
     func dropEntered(info: DropInfo) {
         dropLifecycle = .hovering
         let zone = zoneForLocation(info.location)
-        activeDropZone = zone
+        controller.setActiveDropTarget(paneId: pane.id, zone: zone)
+        controller.noteDropUpdateTiming(paneId: pane.id, zone: zone, event: "entered")
 #if DEBUG
         dlog(
             "pane.dropEntered pane=\(pane.id.id.uuidString.prefix(5)) zone=\(zone) " +
@@ -382,7 +461,7 @@ struct UnifiedPaneDropDelegate: DropDelegate {
 
     func dropExited(info: DropInfo) {
         dropLifecycle = .idle
-        activeDropZone = nil
+        controller.clearActiveDropTarget(for: pane.id, reason: "dropExited")
 #if DEBUG
         dlog("pane.dropExited pane=\(pane.id.id.uuidString.prefix(5))")
 #endif
@@ -396,8 +475,21 @@ struct UnifiedPaneDropDelegate: DropDelegate {
 #endif
             return DropProposal(operation: .move)
         }
+        guard PaneDropOverlayPolicy.shouldAcceptDropUpdate(
+            for: pane.id,
+            activePaneId: controller.activeDropPaneId
+        ) else {
+#if DEBUG
+            dlog(
+                "pane.dropUpdated.skip pane=\(pane.id.id.uuidString.prefix(5)) " +
+                "reason=other_active_pane owner=\(controller.activeDropPaneId?.id.uuidString.prefix(5) ?? "nil")"
+            )
+#endif
+            return DropProposal(operation: .move)
+        }
         let zone = zoneForLocation(info.location)
-        activeDropZone = zone
+        controller.setActiveDropTarget(paneId: pane.id, zone: zone)
+        controller.noteDropUpdateTiming(paneId: pane.id, zone: zone, event: "updated")
 #if DEBUG
         dlog("pane.dropUpdated pane=\(pane.id.id.uuidString.prefix(5)) zone=\(zone)")
 #endif
@@ -416,6 +508,18 @@ struct UnifiedPaneDropDelegate: DropDelegate {
         // Do NOT gate on draggingTab != nil: @Observable changes from createItemProvider
         // may not have propagated to the drop delegate yet, causing false rejections.
         let hasType = info.hasItemsConforming(to: [.tabTransfer])
+        guard hasType else { return false }
+
+        // Local drags use in-memory state and are always same-process.
+        if controller.activeDragTab != nil || controller.draggingTab != nil {
+            return true
+        }
+
+        // External drags must carry a payload from this process.
+        guard let transfer = decodeTransfer(from: info),
+              transfer.isFromCurrentProcess else {
+            return false
+        }
 #if DEBUG
         let hasDrag = controller.draggingTab != nil
         let hasActive = controller.activeDragTab != nil
@@ -424,7 +528,7 @@ struct UnifiedPaneDropDelegate: DropDelegate {
             "allowed=\(hasType ? 1 : 0) hasDrag=\(hasDrag ? 1 : 0) hasActive=\(hasActive ? 1 : 0)"
         )
 #endif
-        return hasType
+        return true
     }
 
     private func decodeTransfer(from string: String) -> TabTransferData? {
@@ -433,5 +537,18 @@ struct UnifiedPaneDropDelegate: DropDelegate {
             return nil
         }
         return transfer
+    }
+
+    private func decodeTransfer(from info: DropInfo) -> TabTransferData? {
+        let pasteboard = NSPasteboard(name: .drag)
+        let type = NSPasteboard.PasteboardType(UTType.tabTransfer.identifier)
+        if let data = pasteboard.data(forType: type),
+           let transfer = try? JSONDecoder().decode(TabTransferData.self, from: data) {
+            return transfer
+        }
+        if let raw = pasteboard.string(forType: type) {
+            return decodeTransfer(from: raw)
+        }
+        return nil
     }
 }
