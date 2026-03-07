@@ -451,7 +451,7 @@ struct TabBarView: View {
                     .font(.system(size: 12))
             }
             .buttonStyle(SplitActionButtonStyle(appearance: appearance))
-            .help(tooltips.newTerminal)
+            .safeHelp(tooltips.newTerminal)
 
             Button {
                 controller.requestNewTab(kind: "browser", inPane: pane.id)
@@ -460,7 +460,7 @@ struct TabBarView: View {
                     .font(.system(size: 12))
             }
             .buttonStyle(SplitActionButtonStyle(appearance: appearance))
-            .help(tooltips.newBrowser)
+            .safeHelp(tooltips.newBrowser)
 
             Button {
                 // 120fps animation handled by SplitAnimator
@@ -470,7 +470,7 @@ struct TabBarView: View {
                     .font(.system(size: 12))
             }
             .buttonStyle(SplitActionButtonStyle(appearance: appearance))
-            .help(tooltips.splitRight)
+            .safeHelp(tooltips.splitRight)
 
             Button {
                 // 120fps animation handled by SplitAnimator
@@ -480,7 +480,7 @@ struct TabBarView: View {
                     .font(.system(size: 12))
             }
             .buttonStyle(SplitActionButtonStyle(appearance: appearance))
-            .help(tooltips.splitDown)
+            .safeHelp(tooltips.splitDown)
         }
         .padding(.trailing, 8)
     }
