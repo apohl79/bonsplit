@@ -12,6 +12,19 @@ private struct SelectedTabFramePreferenceKey: PreferenceKey {
     }
 }
 
+private struct TabDropFrame: Equatable {
+    let index: Int
+    let frame: CGRect
+}
+
+private struct TabDropFramesPreferenceKey: PreferenceKey {
+    static let defaultValue: [TabDropFrame] = []
+
+    static func reduce(value: inout [TabDropFrame], nextValue: () -> [TabDropFrame]) {
+        value.append(contentsOf: nextValue())
+    }
+}
+
 enum TabBarStyling {
     static func separatorSegments(
         totalWidth: CGFloat,
@@ -73,6 +86,7 @@ struct TabBarView: View {
     @State private var contentWidth: CGFloat = 0
     @State private var containerWidth: CGFloat = 0
     @State private var selectedTabFrameInBar: CGRect?
+    @State private var tabDropFrames: [TabDropFrame] = []
     @State private var isHoveringTabBar = false
     @StateObject private var controlKeyMonitor = TabControlShortcutKeyMonitor()
     @AppStorage("paneTabBarControlsVisibilityMode")
@@ -230,11 +244,39 @@ struct TabBarView: View {
         .onPreferenceChange(SelectedTabFramePreferenceKey.self) { frame in
             selectedTabFrameInBar = frame
         }
+        .onPreferenceChange(TabDropFramesPreferenceKey.self) { frames in
+            tabDropFrames = frames.sorted { lhs, rhs in
+                if lhs.index == rhs.index {
+                    return lhs.frame.minX < rhs.frame.minX
+                }
+                return lhs.index < rhs.index
+            }
+        }
         .onDisappear {
             controlKeyMonitor.stop()
         }
         .onHover { hovering in
             isHoveringTabBar = hovering
+        }
+        .overlay {
+            if isTabDragActive {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onDrop(of: [.tabTransfer], delegate: TabDropDelegate(
+                        pane: pane,
+                        bonsplitController: controller,
+                        controller: splitViewController,
+                        dropTargetIndex: $dropTargetIndex,
+                        dropLifecycle: $dropLifecycle,
+                        resolveTargetIndex: { location in
+                            TabDropDelegate.resolvedTargetIndex(
+                                for: location,
+                                frames: tabDropFrames,
+                                fallbackCount: pane.tabs.count
+                            )
+                        }
+                    ))
+            }
         }
     }
 
@@ -285,11 +327,16 @@ struct TabBarView: View {
         )
         .background(
             GeometryReader { geometry in
+                let frame = geometry.frame(in: .named("tabBar"))
                 Color.clear.preference(
                     key: SelectedTabFramePreferenceKey.self,
                     value: pane.selectedTabId == tab.id
-                        ? geometry.frame(in: .named("tabBar"))
+                        ? frame
                         : nil
+                )
+                .preference(
+                    key: TabDropFramesPreferenceKey.self,
+                    value: [TabDropFrame(index: index, frame: frame)]
                 )
             }
         )
@@ -910,14 +957,47 @@ enum TabDropLifecycle {
 // MARK: - Tab Drop Delegate
 
 struct TabDropDelegate: DropDelegate {
-    let targetIndex: Int
     let pane: PaneState
     let bonsplitController: BonsplitController
     let controller: SplitViewController
     @Binding var dropTargetIndex: Int?
     @Binding var dropLifecycle: TabDropLifecycle
+    let resolveTargetIndex: (CGPoint) -> Int
+
+    init(
+        targetIndex: Int,
+        pane: PaneState,
+        bonsplitController: BonsplitController,
+        controller: SplitViewController,
+        dropTargetIndex: Binding<Int?>,
+        dropLifecycle: Binding<TabDropLifecycle>
+    ) {
+        self.pane = pane
+        self.bonsplitController = bonsplitController
+        self.controller = controller
+        self._dropTargetIndex = dropTargetIndex
+        self._dropLifecycle = dropLifecycle
+        self.resolveTargetIndex = { _ in targetIndex }
+    }
+
+    init(
+        pane: PaneState,
+        bonsplitController: BonsplitController,
+        controller: SplitViewController,
+        dropTargetIndex: Binding<Int?>,
+        dropLifecycle: Binding<TabDropLifecycle>,
+        resolveTargetIndex: @escaping (CGPoint) -> Int
+    ) {
+        self.pane = pane
+        self.bonsplitController = bonsplitController
+        self.controller = controller
+        self._dropTargetIndex = dropTargetIndex
+        self._dropLifecycle = dropLifecycle
+        self.resolveTargetIndex = resolveTargetIndex
+    }
 
     func performDrop(info: DropInfo) -> Bool {
+        let targetIndex = resolveTargetIndex(info.location)
         #if DEBUG
         NSLog("[Bonsplit Drag] performDrop called, targetIndex: \(targetIndex)")
         #endif
@@ -991,6 +1071,7 @@ struct TabDropDelegate: DropDelegate {
     }
 
     func dropEntered(info: DropInfo) {
+        let targetIndex = resolveTargetIndex(info.location)
         #if DEBUG
         NSLog("[Bonsplit Drag] dropEntered at index: \(targetIndex)")
         dlog(
@@ -1000,7 +1081,7 @@ struct TabDropDelegate: DropDelegate {
         )
         #endif
         dropLifecycle = .hovering
-        if shouldSuppressIndicatorForNoopSamePaneDrop() {
+        if shouldSuppressIndicatorForNoopSamePaneDrop(targetIndex: targetIndex) {
             dropTargetIndex = nil
         } else {
             dropTargetIndex = targetIndex
@@ -1008,6 +1089,7 @@ struct TabDropDelegate: DropDelegate {
     }
 
     func dropExited(info: DropInfo) {
+        let targetIndex = resolveTargetIndex(info.location)
         #if DEBUG
         NSLog("[Bonsplit Drag] dropExited from index: \(targetIndex)")
         dlog("tab.dropExited pane=\(pane.id.id.uuidString.prefix(5)) targetIndex=\(targetIndex)")
@@ -1019,6 +1101,7 @@ struct TabDropDelegate: DropDelegate {
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
+        let targetIndex = resolveTargetIndex(info.location)
         // Guard against dropUpdated firing after performDrop/dropExited
         // This is the key fix for the lingering indicator bug
         guard dropLifecycle == .hovering else {
@@ -1028,7 +1111,7 @@ struct TabDropDelegate: DropDelegate {
             return DropProposal(operation: .move)
         }
         // Only update if this is the active target, and suppress same-pane no-op indicators.
-        if shouldSuppressIndicatorForNoopSamePaneDrop() {
+        if shouldSuppressIndicatorForNoopSamePaneDrop(targetIndex: targetIndex) {
             if dropTargetIndex == targetIndex {
                 dropTargetIndex = nil
             }
@@ -1079,7 +1162,7 @@ struct TabDropDelegate: DropDelegate {
         return true
     }
 
-    private func shouldSuppressIndicatorForNoopSamePaneDrop() -> Bool {
+    private func shouldSuppressIndicatorForNoopSamePaneDrop(targetIndex: Int) -> Bool {
         guard let draggedTab = controller.draggingTab,
               controller.dragSourcePaneId == pane.id,
               let sourceIndex = pane.tabs.firstIndex(where: { $0.id == draggedTab.id }) else {
@@ -1109,5 +1192,21 @@ struct TabDropDelegate: DropDelegate {
             return decodeTransfer(from: raw)
         }
         return nil
+    }
+
+    fileprivate static func resolvedTargetIndex(
+        for location: CGPoint,
+        frames: [TabDropFrame],
+        fallbackCount: Int
+    ) -> Int {
+        guard !frames.isEmpty else { return fallbackCount }
+
+        for frame in frames {
+            if location.x < frame.frame.midX {
+                return frame.index
+            }
+        }
+
+        return fallbackCount
     }
 }
