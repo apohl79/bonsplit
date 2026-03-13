@@ -73,7 +73,7 @@ struct TabBarView: View {
     @State private var contentWidth: CGFloat = 0
     @State private var containerWidth: CGFloat = 0
     @State private var selectedTabFrameInBar: CGRect?
-    @State private var isHoveringSplitButtonsArea = false
+    @State private var isHoveringTabBar = false
     @StateObject private var controlKeyMonitor = TabControlShortcutKeyMonitor()
     @AppStorage("paneTabBarControlsVisibilityMode")
     private var controlsVisibilityModeRawValue = TabBarControlsVisibilityMode.always.rawValue
@@ -114,7 +114,7 @@ struct TabBarView: View {
         case .always:
             return true
         case .onHover:
-            return isHoveringSplitButtonsArea
+            return isHoveringTabBar
         }
     }
 
@@ -202,6 +202,7 @@ struct TabBarView: View {
         .frame(height: TabBarMetrics.barHeight)
         .coordinateSpace(name: "tabBar")
         .contentShape(Rectangle())
+        .accessibilityIdentifier("paneTabBar")
         .background(tabBarBackground)
         .background(
             TabBarHostWindowReader { window in
@@ -231,6 +232,9 @@ struct TabBarView: View {
         }
         .onDisappear {
             controlKeyMonitor.stop()
+        }
+        .onHover { hovering in
+            isHoveringTabBar = hovering
         }
     }
 
@@ -495,9 +499,6 @@ struct TabBarView: View {
                 .animation(.easeInOut(duration: TabBarMetrics.hoverDuration), value: shouldShowSplitButtonsNow)
         }
         .contentShape(Rectangle())
-        .onHover { hovering in
-            isHoveringSplitButtonsArea = hovering
-        }
         .accessibilityIdentifier("paneTabBarControlsRegion")
     }
 
