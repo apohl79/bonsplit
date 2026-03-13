@@ -51,6 +51,10 @@ public final class BonsplitController {
     /// Return `true` when the drop has been handled by the host application.
     @ObservationIgnored public var onExternalTabDrop: ((ExternalTabDropRequest) -> Bool)?
 
+    /// Called when the user explicitly requests to close a tab from the tab strip UI.
+    /// Internal host-driven closes should not use this hook.
+    @ObservationIgnored public var onTabCloseRequest: ((_ tabId: TabID, _ paneId: PaneID) -> Void)?
+
     // MARK: - Internal State
 
     internal var internalController: SplitViewController

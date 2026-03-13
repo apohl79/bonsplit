@@ -249,6 +249,7 @@ struct TabBarView: View {
                 dlog("tab.close pane=\(pane.id.id.uuidString.prefix(5)) tab=\(tab.id.uuidString.prefix(5)) title=\"\(tab.title)\"")
 #endif
                 withTransaction(Transaction(animation: nil)) {
+                    controller.onTabCloseRequest?(TabID(id: tab.id), pane.id)
                     _ = controller.closeTab(TabID(id: tab.id), inPane: pane.id)
                 }
             },
