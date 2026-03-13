@@ -45,7 +45,9 @@ struct SplitNodeView<Content: View, EmptyContent: View>: View {
 }
 
 /// Container NSView for a pane inside SinglePaneWrapper.
-class PaneDragContainerView: NSView {}
+class PaneDragContainerView: NSView {
+    override var mouseDownCanMoveWindow: Bool { false }
+}
 
 /// Wrapper that uses NSHostingController for proper AppKit layout constraints
 struct SinglePaneWrapper<Content: View, EmptyContent: View>: NSViewRepresentable {

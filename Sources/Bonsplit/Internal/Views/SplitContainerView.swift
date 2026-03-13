@@ -122,7 +122,7 @@ struct SplitContainerView<Content: View, EmptyContent: View>: NSViewRepresentabl
 
         // Keep arranged subviews stable (always 2) to avoid transient "collapse" flashes when
         // replacing pane<->split content. We swap the hosted content within these containers.
-        let firstContainer = NSView()
+        let firstContainer = PaneDragContainerView()
         firstContainer.wantsLayer = true
         firstContainer.layer?.backgroundColor = chromeBackgroundColor.cgColor
         firstContainer.layer?.masksToBounds = true
@@ -131,7 +131,7 @@ struct SplitContainerView<Content: View, EmptyContent: View>: NSViewRepresentabl
         splitView.addArrangedSubview(firstContainer)
         context.coordinator.firstHostingController = firstController
 
-        let secondContainer = NSView()
+        let secondContainer = PaneDragContainerView()
         secondContainer.wantsLayer = true
         secondContainer.layer?.backgroundColor = chromeBackgroundColor.cgColor
         secondContainer.layer?.masksToBounds = true
