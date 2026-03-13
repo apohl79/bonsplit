@@ -53,6 +53,11 @@ struct TabContextMenuState {
     }
 }
 
+private enum TabBarControlsVisibilityMode: String {
+    case always
+    case onHover
+}
+
 /// Tab bar view with scrollable tabs, drag/drop support, and split buttons
 struct TabBarView: View {
     @Environment(BonsplitController.self) private var controller
@@ -68,7 +73,12 @@ struct TabBarView: View {
     @State private var contentWidth: CGFloat = 0
     @State private var containerWidth: CGFloat = 0
     @State private var selectedTabFrameInBar: CGRect?
+    @State private var isHoveringTabBar = false
     @StateObject private var controlKeyMonitor = TabControlShortcutKeyMonitor()
+    @AppStorage("paneTabBarControlsVisibilityMode")
+    private var controlsVisibilityModeRawValue = TabBarControlsVisibilityMode.always.rawValue
+    @AppStorage("workspaceTitlebarVisible")
+    private var showWorkspaceTitlebar = true
 
     private var canScrollLeft: Bool {
         scrollOffset > 1
@@ -93,6 +103,27 @@ struct TabBarView: View {
 
     private var showsControlShortcutHints: Bool {
         isFocused && controlKeyMonitor.isShortcutHintVisible
+    }
+
+    private var controlsVisibilityMode: TabBarControlsVisibilityMode {
+        TabBarControlsVisibilityMode(rawValue: controlsVisibilityModeRawValue) ?? .always
+    }
+
+    private var shouldShowSplitButtonsNow: Bool {
+        switch controlsVisibilityMode {
+        case .always:
+            return true
+        case .onHover:
+            return isHoveringTabBar
+        }
+    }
+
+    private var shouldUseTabBarDragRegion: Bool {
+        !showWorkspaceTitlebar
+    }
+
+    private var isTabDragActive: Bool {
+        splitViewController.draggingTab != nil || splitViewController.activeDragTab != nil
     }
 
     var body: some View {
@@ -136,17 +167,7 @@ struct TabBarView: View {
                     .overlay(alignment: .trailing) {
                         let trailing = max(0, containerGeo.size.width - contentWidth)
                         if trailing >= 1 {
-                            Color.clear
-                                .frame(width: trailing, height: TabBarMetrics.tabHeight)
-                                .contentShape(Rectangle())
-                                .onDrop(of: [.tabTransfer], delegate: TabDropDelegate(
-                                    targetIndex: pane.tabs.count,
-                                    pane: pane,
-                                    bonsplitController: controller,
-                                    controller: splitViewController,
-                                    dropTargetIndex: $dropTargetIndex,
-                                    dropLifecycle: $dropLifecycle
-                                ))
+                            trailingInteractionView(width: trailing)
                         }
                     }
                     .coordinateSpace(name: "tabScroll")
@@ -177,6 +198,14 @@ struct TabBarView: View {
             if showSplitButtons {
                 splitButtons
                     .saturation(tabBarSaturation)
+                    .opacity(shouldShowSplitButtonsNow ? 1 : 0)
+                    .allowsHitTesting(shouldShowSplitButtonsNow)
+                    .animation(.easeInOut(duration: TabBarMetrics.hoverDuration), value: shouldShowSplitButtonsNow)
+                    .background {
+                        if !shouldShowSplitButtonsNow && shouldUseTabBarDragRegion && !isTabDragActive {
+                            TabBarWindowDragRegion()
+                        }
+                    }
             }
         }
         .frame(height: TabBarMetrics.barHeight)
@@ -211,6 +240,9 @@ struct TabBarView: View {
         }
         .onDisappear {
             controlKeyMonitor.stop()
+        }
+        .onHover { hovering in
+            isHoveringTabBar = hovering
         }
     }
 
@@ -436,6 +468,26 @@ struct TabBarView: View {
             .fill(TabBarColors.dropIndicator(for: appearance))
             .frame(width: TabBarMetrics.dropIndicatorWidth, height: TabBarMetrics.dropIndicatorHeight)
             .offset(x: -1)
+    }
+
+    @ViewBuilder
+    private func trailingInteractionView(width: CGFloat) -> some View {
+        if shouldUseTabBarDragRegion && !isTabDragActive {
+            TabBarWindowDragRegion()
+                .frame(width: width, height: TabBarMetrics.tabHeight)
+        } else {
+            Color.clear
+                .frame(width: width, height: TabBarMetrics.tabHeight)
+                .contentShape(Rectangle())
+                .onDrop(of: [.tabTransfer], delegate: TabDropDelegate(
+                    targetIndex: pane.tabs.count,
+                    pane: pane,
+                    bonsplitController: controller,
+                    controller: splitViewController,
+                    dropTargetIndex: $dropTargetIndex,
+                    dropLifecycle: $dropLifecycle
+                ))
+        }
     }
 
     // MARK: - Split Buttons
