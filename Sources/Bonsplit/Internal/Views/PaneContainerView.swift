@@ -8,7 +8,12 @@ private final class TabBarInteractionContainerView: NSView {
     override func accessibilityRole() -> NSAccessibility.Role? { .group }
 }
 
-private final class TabBarInteractionHostingView<Content: View>: BonsplitHostingView<Content> {}
+private final class TabBarInteractionHostingView<Content: View>: BonsplitHostingView<Content> {
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard super.hitTest(point) != nil else { return nil }
+        return self
+    }
+}
 
 private struct TabBarHostingWrapper<Content: View>: NSViewRepresentable {
     let content: Content
