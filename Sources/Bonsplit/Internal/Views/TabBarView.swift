@@ -25,6 +25,14 @@ private struct TabDropFramesPreferenceKey: PreferenceKey {
     }
 }
 
+func tabBarLeadingTrafficLightInset(
+    trafficLightMaxX: CGFloat,
+    tabBarMinXInWindow: CGFloat,
+    trailingPadding: CGFloat = 14
+) -> CGFloat {
+    max(0, trafficLightMaxX + trailingPadding)
+}
+
 final class TabBarLeadingInsetPassthroughView: NSView {
     var onInsetChange: ((CGFloat) -> Void)?
 
@@ -57,10 +65,14 @@ final class TabBarLeadingInsetPassthroughView: NSView {
             guard let self, let window = self.window ?? self.observedWindow else { return }
 
             let buttonTypes: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
-            let maxX = buttonTypes
+            let trafficLightMaxX = buttonTypes
                 .compactMap { window.standardWindowButton($0)?.frame.maxX }
                 .max() ?? 0
-            let inset = max(0, maxX + 14)
+            let frameInWindow = self.convert(self.bounds, to: nil)
+            let inset = tabBarLeadingTrafficLightInset(
+                trafficLightMaxX: trafficLightMaxX,
+                tabBarMinXInWindow: frameInWindow.minX
+            )
             guard self.lastPublishedInset == nil || abs((self.lastPublishedInset ?? 0) - inset) > 0.5 else {
                 return
             }
@@ -424,7 +436,6 @@ struct TabBarView: View {
         )
         .background(
             TabBarLeadingInsetReader(inset: $leadingTrafficLightInset)
-                .frame(width: 0, height: 0)
         )
         // Clear drop state when drag ends elsewhere (cancelled, dropped in another pane, etc.)
         .onChange(of: splitViewController.draggingTab) { _, newValue in
