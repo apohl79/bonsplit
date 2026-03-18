@@ -106,6 +106,21 @@ final class BonsplitTests: XCTestCase {
         }
     }
 
+    private func withWorkspacePresentationMode<T>(_ mode: String, perform: () throws -> T) rethrows -> T {
+        let defaults = UserDefaults.standard
+        let key = "workspacePresentationMode"
+        let previousValue = defaults.object(forKey: key)
+        defaults.set(mode, forKey: key)
+        defer {
+            if let previousValue {
+                defaults.set(previousValue, forKey: key)
+            } else {
+                defaults.removeObject(forKey: key)
+            }
+        }
+        return try perform()
+    }
+
     @MainActor
     private final class DragRecordingWindow: NSWindow {
         private(set) var didPerformDrag = false
@@ -590,6 +605,54 @@ final class BonsplitTests: XCTestCase {
 
         XCTAssertEqual(spy.requestedKind, "terminal")
         XCTAssertEqual(spy.requestedPaneId, pane.id)
+    }
+
+    @MainActor
+    func testMinimalModeDoubleClickingEmptyTrailingTabBarSpaceDoesNotRequestNewTerminalTab() {
+        withWorkspacePresentationMode("minimal") {
+            let appearance = BonsplitConfiguration.Appearance(showSplitButtons: false)
+            let configuration = BonsplitConfiguration(appearance: appearance)
+            let controller = BonsplitController(configuration: configuration)
+            let pane = controller.internalController.rootNode.allPanes.first!
+            let spy = NewTabRequestDelegateSpy()
+            controller.delegate = spy
+
+            let hostingView = NSHostingView(
+                rootView: TabBarView(pane: pane, isFocused: true, showSplitButtons: false)
+                    .environment(controller)
+                    .environment(controller.internalController)
+            )
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 480, height: 60),
+                styleMask: [.titled, .closable],
+                backing: .buffered,
+                defer: false
+            )
+            defer { window.orderOut(nil) }
+            guard let contentView = window.contentView else {
+                XCTFail("Expected content view")
+                return
+            }
+
+            hostingView.frame = contentView.bounds
+            hostingView.autoresizingMask = [.width, .height]
+            contentView.addSubview(hostingView)
+
+            window.makeKeyAndOrderFront(nil)
+            contentView.layoutSubtreeIfNeeded()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+            contentView.layoutSubtreeIfNeeded()
+
+            let clickPoint = NSPoint(x: hostingView.bounds.maxX - 12, y: hostingView.bounds.midY)
+            guard let event = try? makeLeftMouseDownEvent(in: hostingView, at: clickPoint, clickCount: 2) else {
+                XCTFail("Expected mouse event")
+                return
+            }
+            NSApp.sendEvent(event)
+
+            XCTAssertNil(spy.requestedKind)
+            XCTAssertNil(spy.requestedPaneId)
+        }
     }
 
     @MainActor
