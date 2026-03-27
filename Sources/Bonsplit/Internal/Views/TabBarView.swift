@@ -65,6 +65,7 @@ struct TabBarView: View {
     let isFocused: Bool
     var showSplitButtons: Bool = true
 
+    @State private var isHoveringTabBar = false
     @State private var dropTargetIndex: Int?
     @State private var dropLifecycle: TabDropLifecycle = .idle
     @State private var scrollOffset: CGFloat = 0
@@ -185,13 +186,18 @@ struct TabBarView: View {
 
             // Split buttons
             if showSplitButtons {
+                let shouldShow = !appearance.splitButtonsOnHover || isHoveringTabBar
                 splitButtons
                     .saturation(tabBarSaturation)
+                    .opacity(shouldShow ? 1 : 0)
+                    .allowsHitTesting(shouldShow)
+                    .animation(.easeInOut(duration: 0.14), value: shouldShow)
             }
         }
         .frame(height: TabBarMetrics.barHeight)
         .coordinateSpace(name: "tabBar")
         .contentShape(Rectangle())
+        .onHover { isHoveringTabBar = $0 }
         .background(tabBarBackground)
         .background(
             TabBarHostWindowReader { window in
