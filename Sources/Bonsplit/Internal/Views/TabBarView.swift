@@ -627,6 +627,9 @@ private struct EmptyTabBarDoubleClickMonitorView: NSViewRepresentable {
         let coordinator = context.coordinator
         coordinator.monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown]) { [weak coordinator] event in
             guard event.clickCount >= 2 else { return event }
+            // In minimal mode, double-click should zoom the window, not create a tab.
+            // Let the TabBarWindowDragView handle it instead.
+            if UserDefaults.standard.string(forKey: "workspacePresentationMode") == "minimal" { return event }
             guard let coordinator, let view = coordinator.view, let window = view.window else { return event }
             guard event.window === window else { return event }
 
