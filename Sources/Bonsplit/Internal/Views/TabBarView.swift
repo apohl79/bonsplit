@@ -114,7 +114,7 @@ struct TabBarView: View {
     var body: some View {
         HStack(spacing: 0) {
             if needsTrafficLightInset {
-                Spacer().frame(width: 72)
+                Spacer().frame(width: 80)
             }
             // Scrollable tabs with fade overlays
             GeometryReader { containerGeo in
