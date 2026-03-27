@@ -200,7 +200,7 @@ struct TabBarView: View {
         .contentShape(Rectangle())
         .onHover { isHoveringTabBar = $0 }
         .background(tabBarBackground)
-        .background(TabBarWindowDragView())
+        .overlay(TabBarWindowDragView())
         .background(
             TabBarHostWindowReader { window in
                 controlKeyMonitor.setHostWindow(window)
@@ -643,8 +643,9 @@ private struct EmptyTabBarDoubleClickMonitorView: NSViewRepresentable {
     }
 }
 
-/// Transparent view that enables window dragging from the tab bar background.
-/// Only active when the presentation mode is minimal.
+/// Transparent overlay that enables window dragging from empty tab bar space.
+/// Only active when the presentation mode is minimal. Passes through clicks
+/// on interactive elements (buttons, tab items) below.
 private struct TabBarWindowDragView: NSViewRepresentable {
     func makeNSView(context: Context) -> DraggableTabBarView {
         DraggableTabBarView()
@@ -655,11 +656,28 @@ private struct TabBarWindowDragView: NSViewRepresentable {
     final class DraggableTabBarView: NSView {
         override var mouseDownCanMoveWindow: Bool { false }
 
-        override func mouseDown(with event: NSEvent) {
-            guard UserDefaults.standard.string(forKey: "workspacePresentationMode") == "minimal" else {
-                super.mouseDown(with: event)
-                return
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            guard NSApp.currentEvent?.type == .leftMouseDown else { return nil }
+            guard UserDefaults.standard.string(forKey: "workspacePresentationMode") == "minimal" else { return nil }
+            guard bounds.contains(point) else { return nil }
+            // Check if an interactive element (button, tab) is under this point.
+            // If so, pass through so the user can click tabs/buttons normally.
+            if let superview {
+                for sibling in superview.subviews.reversed() where sibling !== self {
+                    guard !sibling.isHidden, sibling.alphaValue > 0 else { continue }
+                    let siblingPoint = convert(point, to: sibling)
+                    if let hit = sibling.hitTest(siblingPoint) {
+                        // If the hit view is a button or has an action, pass through.
+                        if hit is NSButton || hit.responds(to: #selector(NSControl.sendAction(_:to:))) {
+                            return nil
+                        }
+                    }
+                }
             }
+            return self
+        }
+
+        override func mouseDown(with event: NSEvent) {
             guard let window else {
                 super.mouseDown(with: event)
                 return
