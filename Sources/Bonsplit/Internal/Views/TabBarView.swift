@@ -200,6 +200,7 @@ struct TabBarView: View {
         .contentShape(Rectangle())
         .onHover { isHoveringTabBar = $0 }
         .background(tabBarBackground)
+        .background(TabBarWindowDragView())
         .background(
             TabBarHostWindowReader { window in
                 controlKeyMonitor.setHostWindow(window)
@@ -639,6 +640,35 @@ private struct EmptyTabBarDoubleClickMonitorView: NSViewRepresentable {
     func updateNSView(_ nsView: NSView, context: Context) {
         context.coordinator.view = nsView
         context.coordinator.onDoubleClick = onDoubleClick
+    }
+}
+
+/// Transparent view that enables window dragging from the tab bar background.
+/// Only active when the presentation mode is minimal.
+private struct TabBarWindowDragView: NSViewRepresentable {
+    func makeNSView(context: Context) -> DraggableTabBarView {
+        DraggableTabBarView()
+    }
+
+    func updateNSView(_ nsView: DraggableTabBarView, context: Context) {}
+
+    final class DraggableTabBarView: NSView {
+        override var mouseDownCanMoveWindow: Bool { false }
+
+        override func mouseDown(with event: NSEvent) {
+            guard UserDefaults.standard.string(forKey: "workspacePresentationMode") == "minimal" else {
+                super.mouseDown(with: event)
+                return
+            }
+            guard let window else {
+                super.mouseDown(with: event)
+                return
+            }
+            let wasMovable = window.isMovable
+            window.isMovable = true
+            window.performDrag(with: event)
+            window.isMovable = wasMovable
+        }
     }
 }
 
