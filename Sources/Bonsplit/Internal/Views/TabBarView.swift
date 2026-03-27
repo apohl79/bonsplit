@@ -102,6 +102,9 @@ struct TabBarView: View {
 
     var body: some View {
         HStack(spacing: 0) {
+            if appearance.tabBarLeadingInset > 0 {
+                Spacer().frame(width: appearance.tabBarLeadingInset)
+            }
             // Scrollable tabs with fade overlays
             GeometryReader { containerGeo in
                 ScrollViewReader { proxy in
