@@ -103,14 +103,20 @@ struct TabBarView: View {
     @State private var needsTrafficLightInset = false
 
     private func updateTrafficLightInset(frame: CGRect) {
-        // Only the top-left tab bar (near leading edge and near screen top) needs
-        // traffic light clearance. In global coordinates, minX near 0 means
-        // leftmost, and maxY near screen top means topmost.
-        let isNearLeading = frame.minX < 120
-        // Check if this is the topmost tab bar by seeing if the top edge is
-        // near the window's top. Use a generous threshold since we can't easily
-        // get the window frame from here.
-        let isNearTop = frame.maxY > (NSScreen.main?.frame.maxY ?? 0) - 100
+        // In minimal mode with no sidebar, the leftmost panes need traffic
+        // light clearance. Check if this tab bar is near the leading edge
+        // of the window by comparing its global x position to the window's.
+        guard let window = NSApp.windows.first(where: { $0.isMainWindow || $0.isKeyWindow }) else {
+            let needs = presentationMode == "minimal" && frame.minX < 120
+            if needsTrafficLightInset != needs { needsTrafficLightInset = needs }
+            return
+        }
+        let windowMinX = window.frame.minX
+        let isNearLeading = frame.minX - windowMinX < 20
+        // Only the topmost row needs the inset. Check if the tab bar's top
+        // edge is near the window's top edge.
+        let windowMaxY = window.frame.maxY
+        let isNearTop = windowMaxY - frame.maxY < 60
         let needs = presentationMode == "minimal" && isNearLeading && isNearTop
         if needsTrafficLightInset != needs {
             needsTrafficLightInset = needs
