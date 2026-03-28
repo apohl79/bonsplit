@@ -169,6 +169,12 @@ extension BonsplitConfiguration {
         /// Whether to show split buttons in the tab bar
         public var showSplitButtons: Bool
 
+        /// When true, split buttons are only visible on hover
+        public var splitButtonsOnHover: Bool
+
+        /// Extra leading inset for the tab bar (e.g. for traffic light buttons when sidebar is collapsed)
+        public var tabBarLeadingInset: CGFloat
+
         /// Tooltip text for the tab bar's right-side action buttons
         public var splitButtonTooltips: SplitButtonTooltips
 
@@ -212,6 +218,8 @@ extension BonsplitConfiguration {
             minimumPaneWidth: CGFloat = 100,
             minimumPaneHeight: CGFloat = 100,
             showSplitButtons: Bool = true,
+            splitButtonsOnHover: Bool = false,
+            tabBarLeadingInset: CGFloat = 0,
             splitButtonTooltips: SplitButtonTooltips = .default,
             animationDuration: Double = 0.15,
             enableAnimations: Bool = true,
@@ -224,6 +232,8 @@ extension BonsplitConfiguration {
             self.minimumPaneWidth = minimumPaneWidth
             self.minimumPaneHeight = minimumPaneHeight
             self.showSplitButtons = showSplitButtons
+            self.splitButtonsOnHover = splitButtonsOnHover
+            self.tabBarLeadingInset = tabBarLeadingInset
             self.splitButtonTooltips = splitButtonTooltips
             self.animationDuration = animationDuration
             self.enableAnimations = enableAnimations

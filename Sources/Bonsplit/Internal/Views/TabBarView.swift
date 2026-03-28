@@ -65,6 +65,8 @@ struct TabBarView: View {
     let isFocused: Bool
     var showSplitButtons: Bool = true
 
+    @AppStorage("workspacePresentationMode") private var presentationMode = "standard"
+    @State private var isHoveringTabBar = false
     @State private var dropTargetIndex: Int?
     @State private var dropLifecycle: TabDropLifecycle = .idle
     @State private var scrollOffset: CGFloat = 0
@@ -98,8 +100,13 @@ struct TabBarView: View {
         isFocused && controlKeyMonitor.isShortcutHintVisible
     }
 
+
     var body: some View {
         HStack(spacing: 0) {
+            if appearance.tabBarLeadingInset > 0 && controller.internalController.rootNode.allPaneIds.first == pane.id {
+                TabBarDragZoneView { return false }
+                    .frame(width: appearance.tabBarLeadingInset)
+            }
             // Scrollable tabs with fade overlays
             GeometryReader { containerGeo in
                 ScrollViewReader { proxy in
@@ -139,24 +146,20 @@ struct TabBarView: View {
                     .overlay(alignment: .trailing) {
                         let trailing = max(0, containerGeo.size.width - contentWidth)
                         if trailing >= 1 {
-                            Color.clear
-                                .frame(width: trailing, height: TabBarMetrics.tabHeight)
-                                .contentShape(Rectangle())
-                                .background(
-                                    EmptyTabBarDoubleClickMonitorView {
-                                        guard splitViewController.isInteractive else { return false }
-                                        controller.requestNewTab(kind: "terminal", inPane: pane.id)
-                                        return true
-                                    }
-                                )
-                                .onDrop(of: [.tabTransfer], delegate: TabDropDelegate(
-                                    targetIndex: pane.tabs.count,
-                                    pane: pane,
-                                    bonsplitController: controller,
-                                    controller: splitViewController,
-                                    dropTargetIndex: $dropTargetIndex,
-                                    dropLifecycle: $dropLifecycle
-                                ))
+                            TabBarDragZoneView {
+                                guard splitViewController.isInteractive else { return false }
+                                controller.requestNewTab(kind: "terminal", inPane: pane.id)
+                                return true
+                            }
+                            .frame(width: trailing, height: TabBarMetrics.tabHeight)
+                            .onDrop(of: [.tabTransfer], delegate: TabDropDelegate(
+                                targetIndex: pane.tabs.count,
+                                pane: pane,
+                                bonsplitController: controller,
+                                controller: splitViewController,
+                                dropTargetIndex: $dropTargetIndex,
+                                dropLifecycle: $dropLifecycle
+                            ))
                         }
                     }
                     .coordinateSpace(name: "tabScroll")
@@ -185,14 +188,21 @@ struct TabBarView: View {
 
             // Split buttons
             if showSplitButtons {
+                let shouldShow = presentationMode != "minimal" || isHoveringTabBar
                 splitButtons
                     .saturation(tabBarSaturation)
+                    .opacity(shouldShow ? 1 : 0)
+                    .allowsHitTesting(shouldShow)
+                    .animation(.easeInOut(duration: 0.14), value: shouldShow)
             }
         }
         .frame(height: TabBarMetrics.barHeight)
         .coordinateSpace(name: "tabBar")
-        .contentShape(Rectangle())
         .background(tabBarBackground)
+        .background(TabBarDragAndHoverView(
+            isMinimalMode: presentationMode == "minimal",
+            onHoverChanged: { isHoveringTabBar = $0 }
+        ))
         .background(
             TabBarHostWindowReader { window in
                 controlKeyMonitor.setHostWindow(window)
@@ -422,31 +432,26 @@ struct TabBarView: View {
 
     @ViewBuilder
     private var dropZoneAfterTabs: some View {
-        Rectangle()
-            .fill(Color.clear)
-            .frame(width: 30, height: TabBarMetrics.tabHeight)
-            .contentShape(Rectangle())
-            .background(
-                EmptyTabBarDoubleClickMonitorView {
-                    guard splitViewController.isInteractive else { return false }
-                    controller.requestNewTab(kind: "terminal", inPane: pane.id)
-                    return true
-                }
-            )
-            .onDrop(of: [.tabTransfer], delegate: TabDropDelegate(
-                targetIndex: pane.tabs.count,
-                pane: pane,
-                bonsplitController: controller,
-                controller: splitViewController,
-                dropTargetIndex: $dropTargetIndex,
-                dropLifecycle: $dropLifecycle
-            ))
-            .overlay(alignment: .leading) {
-                if dropTargetIndex == pane.tabs.count {
-                    dropIndicator
-                        .saturation(tabBarSaturation)
-                }
+        TabBarDragZoneView {
+            guard splitViewController.isInteractive else { return false }
+            controller.requestNewTab(kind: "terminal", inPane: pane.id)
+            return true
+        }
+        .frame(width: 30, height: TabBarMetrics.tabHeight)
+        .onDrop(of: [.tabTransfer], delegate: TabDropDelegate(
+            targetIndex: pane.tabs.count,
+            pane: pane,
+            bonsplitController: controller,
+            controller: splitViewController,
+            dropTargetIndex: $dropTargetIndex,
+            dropLifecycle: $dropLifecycle
+        ))
+        .overlay(alignment: .leading) {
+            if dropTargetIndex == pane.tabs.count {
+                dropIndicator
+                    .saturation(tabBarSaturation)
             }
+        }
     }
 
     // MARK: - Drop Indicator
@@ -588,50 +593,132 @@ private struct SplitActionButtonStyle: ButtonStyle {
     }
 }
 
-private struct EmptyTabBarDoubleClickMonitorView: NSViewRepresentable {
-    let onDoubleClick: () -> Bool
+/// Background view that provides window-drag-from-empty-space in minimal mode
+/// and hover tracking via NSTrackingArea (replacing .contentShape + .onHover).
+/// As a .background(), AppKit routes clicks to tabs/buttons in front first;
+/// this view only receives hits in truly empty space.
+private struct TabBarDragAndHoverView: NSViewRepresentable {
+    let isMinimalMode: Bool
+    let onHoverChanged: (Bool) -> Void
 
-    final class Coordinator {
-        var onDoubleClick: (() -> Bool)?
-        weak var view: NSView?
-        var monitor: Any?
-
-        deinit {
-            if let monitor {
-                NSEvent.removeMonitor(monitor)
-            }
-        }
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView(frame: .zero)
-        view.wantsLayer = true
-        view.layer?.backgroundColor = NSColor.clear.cgColor
-
-        context.coordinator.view = view
-        context.coordinator.onDoubleClick = onDoubleClick
-
-        let coordinator = context.coordinator
-        coordinator.monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown]) { [weak coordinator] event in
-            guard event.clickCount >= 2 else { return event }
-            guard let coordinator, let view = coordinator.view, let window = view.window else { return event }
-            guard event.window === window else { return event }
-
-            let point = view.convert(event.locationInWindow, from: nil)
-            guard view.bounds.contains(point) else { return event }
-
-            guard coordinator.onDoubleClick?() == true else { return event }
-            return nil
-        }
-
+    func makeNSView(context: Context) -> TabBarBackgroundNSView {
+        let view = TabBarBackgroundNSView()
+        view.isMinimalMode = isMinimalMode
+        view.onHoverChanged = onHoverChanged
         return view
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {
-        context.coordinator.view = nsView
-        context.coordinator.onDoubleClick = onDoubleClick
+    func updateNSView(_ nsView: TabBarBackgroundNSView, context: Context) {
+        nsView.isMinimalMode = isMinimalMode
+        nsView.onHoverChanged = onHoverChanged
+    }
+
+    final class TabBarBackgroundNSView: NSView {
+        var isMinimalMode = false
+        var onHoverChanged: ((Bool) -> Void)?
+        private var hoverTrackingArea: NSTrackingArea?
+
+        override var mouseDownCanMoveWindow: Bool { false }
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            if let existing = hoverTrackingArea {
+                removeTrackingArea(existing)
+            }
+            let area = NSTrackingArea(
+                rect: bounds,
+                options: [.mouseEnteredAndExited, .activeInActiveApp],
+                owner: self
+            )
+            addTrackingArea(area)
+            hoverTrackingArea = area
+        }
+
+        override func mouseEntered(with event: NSEvent) {
+            onHoverChanged?(true)
+        }
+
+        override func mouseExited(with event: NSEvent) {
+            onHoverChanged?(false)
+        }
+
+        override func mouseDown(with event: NSEvent) {
+            guard isMinimalMode, let window else {
+                super.mouseDown(with: event)
+                return
+            }
+            if event.clickCount >= 2 {
+                let action = UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)?["AppleActionOnDoubleClick"] as? String
+                switch action {
+                case "Minimize": window.miniaturize(nil)
+                default: window.zoom(nil)
+                }
+                return
+            }
+            let wasMovable = window.isMovable
+            window.isMovable = true
+            window.performDrag(with: event)
+            window.isMovable = wasMovable
+        }
+    }
+}
+
+private struct TabBarDragZoneView: NSViewRepresentable {
+    let onDoubleClick: () -> Bool
+
+    func makeNSView(context: Context) -> DragNSView {
+        let view = DragNSView()
+        view.onDoubleClick = onDoubleClick
+        view.wantsLayer = true
+        view.layer?.backgroundColor = NSColor.clear.cgColor
+        return view
+    }
+
+    func updateNSView(_ nsView: DragNSView, context: Context) {
+        nsView.onDoubleClick = onDoubleClick
+    }
+
+    final class DragNSView: NSView {
+        var onDoubleClick: (() -> Bool)?
+
+        override var mouseDownCanMoveWindow: Bool {
+            return UserDefaults.standard.string(forKey: "workspacePresentationMode") == "minimal"
+        }
+
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            return bounds.contains(point) ? self : nil
+        }
+
+        override func mouseDown(with event: NSEvent) {
+            guard let window = self.window else {
+                super.mouseDown(with: event)
+                return
+            }
+
+            if event.clickCount >= 2 {
+                if UserDefaults.standard.string(forKey: "workspacePresentationMode") == "minimal" {
+                    let action = UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)?["AppleActionOnDoubleClick"] as? String
+                    switch action {
+                    case "Minimize": window.miniaturize(nil)
+                    default: window.zoom(nil)
+                    }
+                    return
+                } else {
+                    if onDoubleClick?() == true {
+                        return
+                    }
+                }
+            }
+
+            if UserDefaults.standard.string(forKey: "workspacePresentationMode") == "minimal" {
+                let wasMovable = window.isMovable
+                window.isMovable = true
+                window.performDrag(with: event)
+                window.isMovable = wasMovable
+            } else {
+                super.mouseDown(with: event)
+            }
+        }
     }
 }
 
