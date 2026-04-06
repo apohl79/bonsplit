@@ -556,6 +556,13 @@ struct SplitContainerView<Content: View, EmptyContent: View>: NSViewRepresentabl
             let maxPosition = max(minPaneSize, available - minPaneSize)
             return min(max(position, minPaneSize), maxPosition)
         }
+
+        private func dividerHitRectContains(_ point: NSPoint, rect: NSRect) -> Bool {
+            point.x >= rect.minX &&
+                point.x <= rect.maxX &&
+                point.y >= rect.minY &&
+                point.y <= rect.maxY
+        }
 #if DEBUG
         private func debugLogDividerDragSkip(
             _ reason: String,
@@ -731,8 +738,11 @@ struct SplitContainerView<Content: View, EmptyContent: View>: NSViewRepresentabl
                 let y = max(0, a.maxY)
                 dividerRect = NSRect(x: 0, y: y, width: splitView.bounds.width, height: thickness)
             }
-            let hitRect = dividerRect.insetBy(dx: -4, dy: -4)
-            if hitRect.contains(location) {
+            // Match the divider's expanded effective rect and treat the max edge
+            // as inside so drag tracking doesn't miss when AppKit reports a point
+            // exactly on the divider boundary during multi-split resizes.
+            let hitRect = dividerRect.insetBy(dx: -5, dy: -5)
+            if dividerHitRectContains(location, rect: hitRect) {
                 isDragging = true
 #if DEBUG
                 dlog(
@@ -838,17 +848,18 @@ struct SplitContainerView<Content: View, EmptyContent: View>: NSViewRepresentabl
                     return
                 }
 
-                Task { @MainActor in
+                // NSSplitView delegate callbacks already arrive on the main thread.
+                // Deferring this write through a Task can replay stale divider ratios
+                // via updateNSView() and make fast drags snap back to older positions.
 #if DEBUG
-                    dlog(
-                        "divider.dragUpdate split=\(splitState.id.uuidString.prefix(5)) normalized=\(String(format: "%.3f", normalizedPosition)) px=\(Int(dividerPosition.rounded())) available=\(Int(availableSize.rounded()))"
-                    )
+                dlog(
+                    "divider.dragUpdate split=\(splitState.id.uuidString.prefix(5)) normalized=\(String(format: "%.3f", normalizedPosition)) px=\(Int(dividerPosition.rounded())) available=\(Int(availableSize.rounded()))"
+                )
 #endif
-                    self.splitState.dividerPosition = normalizedPosition
-                    self.lastAppliedPosition = normalizedPosition
-                    // Notify geometry change with drag state
-                    self.onGeometryChange?(wasDragging)
-                }
+                self.splitState.dividerPosition = normalizedPosition
+                self.lastAppliedPosition = normalizedPosition
+                // Notify geometry change with drag state
+                self.onGeometryChange?(wasDragging)
             }
         }
 
