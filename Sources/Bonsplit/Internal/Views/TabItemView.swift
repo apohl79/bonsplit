@@ -133,13 +133,13 @@ struct TabItemView: View {
                         onZoomToggle()
                     } label: {
                         Image(systemName: "arrow.up.left.and.arrow.down.right")
-                            .font(.system(size: max(8, appearance.tabTitleFontSize - 2), weight: .semibold))
+                            .font(.system(size: accessoryFontSize, weight: .semibold))
                             .foregroundStyle(
                                 isZoomHovered
                                     ? TabBarColors.activeText(for: appearance)
                                     : TabBarColors.inactiveText(for: appearance)
                             )
-                            .frame(width: TabBarMetrics.closeButtonSize, height: TabBarMetrics.closeButtonSize)
+                            .frame(width: accessorySlotSize, height: accessorySlotSize)
                             .background(
                                 Circle()
                                     .fill(
@@ -217,14 +217,23 @@ struct TabItemView: View {
 
     private var shortcutHintSlotWidth: CGFloat {
         guard let label = shortcutHintLabel else {
-            return TabBarMetrics.closeButtonSize
+            return accessorySlotSize
         }
         let positiveDebugInset = max(0, CGFloat(TabControlShortcutHintDebugSettings.clamped(controlShortcutHintXOffset))) + 2
-        return max(TabBarMetrics.closeButtonSize, shortcutHintWidth(for: label) + positiveDebugInset)
+        return max(accessorySlotSize, shortcutHintWidth(for: label) + positiveDebugInset)
+    }
+
+    private var accessoryFontSize: CGFloat {
+        max(8, appearance.tabTitleFontSize - 2)
+    }
+
+    private var accessorySlotSize: CGFloat {
+        // Keep accessory affordances readable when the tab title font is increased.
+        min(TabBarMetrics.tabHeight, max(TabBarMetrics.closeButtonSize, ceil(accessoryFontSize + 4)))
     }
 
     private func shortcutHintWidth(for label: String) -> CGFloat {
-        let font = NSFont.systemFont(ofSize: max(8, appearance.tabTitleFontSize - 2), weight: .semibold)
+        let font = NSFont.systemFont(ofSize: accessoryFontSize, weight: .semibold)
         let textWidth = (label as NSString).size(withAttributes: [.font: font]).width
         return ceil(textWidth) + 8
     }
@@ -234,7 +243,7 @@ struct TabItemView: View {
         ZStack(alignment: .center) {
             if let shortcutHintLabel {
                 Text(shortcutHintLabel)
-                    .font(.system(size: max(8, appearance.tabTitleFontSize - 2), weight: .semibold, design: .rounded))
+                    .font(.system(size: accessoryFontSize, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
@@ -266,7 +275,7 @@ struct TabItemView: View {
                 .opacity(showsShortcutHint ? 0 : 1)
                 .allowsHitTesting(!showsShortcutHint)
         }
-        .frame(width: shortcutHintSlotWidth, height: TabBarMetrics.closeButtonSize, alignment: .center)
+        .frame(width: shortcutHintSlotWidth, height: accessorySlotSize, alignment: .center)
         .animation(.easeInOut(duration: 0.14), value: showsShortcutHint)
     }
 
@@ -478,7 +487,7 @@ struct TabItemView: View {
                     Image(systemName: "pin.fill")
                         .font(.system(size: TabBarMetrics.closeIconSize, weight: .semibold))
                         .foregroundStyle(TabBarColors.inactiveText(for: appearance))
-                        .frame(width: TabBarMetrics.closeButtonSize, height: TabBarMetrics.closeButtonSize)
+                        .frame(width: accessorySlotSize, height: accessorySlotSize)
                         .saturation(saturation)
                 }
             } else if isSelected || isHovered || isCloseHovered {
@@ -493,7 +502,7 @@ struct TabItemView: View {
                                 ? TabBarColors.activeText(for: appearance)
                                 : TabBarColors.inactiveText(for: appearance)
                         )
-                        .frame(width: TabBarMetrics.closeButtonSize, height: TabBarMetrics.closeButtonSize)
+                        .frame(width: accessorySlotSize, height: accessorySlotSize)
                         .background(
                             Circle()
                                 .fill(
@@ -510,7 +519,7 @@ struct TabItemView: View {
                 .saturation(saturation)
             }
         }
-        .frame(width: TabBarMetrics.closeButtonSize, height: TabBarMetrics.closeButtonSize)
+        .frame(width: accessorySlotSize, height: accessorySlotSize)
         .animation(.easeInOut(duration: TabBarMetrics.hoverDuration), value: isHovered)
         .animation(.easeInOut(duration: TabBarMetrics.hoverDuration), value: isCloseHovered)
     }
