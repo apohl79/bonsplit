@@ -904,7 +904,11 @@ enum TabControlShortcutHintPolicy {
         let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
             .subtracting([.numericPad, .function, .capsLock])
         let shortcut = TabControlShortcutSettings.surfaceByNumberShortcut(defaults: defaults)
-        guard flags == shortcut.modifierFlags else { return nil }
+        if flags != shortcut.modifierFlags {
+            // Command-only hold reveals all hints (including pane hints), while
+            // control (or other modifiers) remains strict to the pane shortcut.
+            guard flags == [.command] else { return nil }
+        }
         return TabControlShortcutModifier(
             modifierFlags: shortcut.modifierFlags,
             symbol: shortcut.modifierSymbol

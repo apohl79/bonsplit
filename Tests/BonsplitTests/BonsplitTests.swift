@@ -600,9 +600,13 @@ final class BonsplitTests: XCTestCase {
             defaults.set(true, forKey: TabControlShortcutHintPolicy.showHintsOnCommandHoldKey)
 
             XCTAssertNotNil(TabControlShortcutHintPolicy.hintModifier(for: [.control], defaults: defaults))
+            XCTAssertEqual(
+                TabControlShortcutHintPolicy.hintModifier(for: [.command], defaults: defaults)?.symbol,
+                "⌃"
+            )
             XCTAssertNil(TabControlShortcutHintPolicy.hintModifier(for: [], defaults: defaults))
             XCTAssertNil(TabControlShortcutHintPolicy.hintModifier(for: [.control, .shift], defaults: defaults))
-            XCTAssertNil(TabControlShortcutHintPolicy.hintModifier(for: [.command], defaults: defaults))
+            XCTAssertNil(TabControlShortcutHintPolicy.hintModifier(for: [.command, .option], defaults: defaults))
 
             defaults.set(
                 shortcutData(
@@ -617,6 +621,10 @@ final class BonsplitTests: XCTestCase {
 
             let custom = TabControlShortcutHintPolicy.hintModifier(for: [.command, .option], defaults: defaults)
             XCTAssertEqual(custom?.symbol, "⌥⌘")
+            XCTAssertEqual(
+                TabControlShortcutHintPolicy.hintModifier(for: [.command], defaults: defaults)?.symbol,
+                "⌥⌘"
+            )
             XCTAssertNil(TabControlShortcutHintPolicy.hintModifier(for: [.control], defaults: defaults))
         }
     }
@@ -635,7 +643,7 @@ final class BonsplitTests: XCTestCase {
             defaults.removeObject(forKey: TabControlShortcutHintPolicy.showHintsOnCommandHoldKey)
 
             XCTAssertEqual(TabControlShortcutHintPolicy.hintModifier(for: [.control], defaults: defaults)?.symbol, "⌃")
-            XCTAssertNil(TabControlShortcutHintPolicy.hintModifier(for: [.command], defaults: defaults))
+            XCTAssertEqual(TabControlShortcutHintPolicy.hintModifier(for: [.command], defaults: defaults)?.symbol, "⌃")
         }
     }
 
