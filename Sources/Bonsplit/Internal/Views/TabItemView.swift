@@ -20,6 +20,10 @@ enum TabItemStyling {
         hasRasterIcon ? 1.0 : tabSaturation
     }
 
+    static func clampedTitleFontSize(_ size: CGFloat) -> CGFloat {
+        max(8, size)
+    }
+
     static func shouldShowHoverBackground(isHovered: Bool, isSelected: Bool) -> Bool {
         isHovered && !isSelected
     }
@@ -119,7 +123,7 @@ struct TabItemView: View {
                 .onChange(of: tab.icon) { _ in updateGlobeFallback() }
 
                 Text(tab.title)
-                    .font(.system(size: appearance.tabTitleFontSize))
+                    .font(.system(size: titleFontSize))
                     .lineLimit(1)
                     .foregroundStyle(
                         isSelected
@@ -223,8 +227,12 @@ struct TabItemView: View {
         return max(accessorySlotSize, shortcutHintWidth(for: label) + positiveDebugInset)
     }
 
+    private var titleFontSize: CGFloat {
+        TabItemStyling.clampedTitleFontSize(appearance.tabTitleFontSize)
+    }
+
     private var accessoryFontSize: CGFloat {
-        max(8, appearance.tabTitleFontSize - 2)
+        max(8, titleFontSize - 2)
     }
 
     private var accessorySlotSize: CGFloat {
