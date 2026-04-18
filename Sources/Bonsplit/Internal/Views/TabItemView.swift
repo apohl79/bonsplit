@@ -39,6 +39,7 @@ enum TabItemStyling {
 struct TabItemView: View {
     let tab: TabItem
     let isSelected: Bool
+    let isPaneFocused: Bool
     let showsZoomIndicator: Bool
     let appearance: BonsplitConfiguration.Appearance
     let saturation: Double
@@ -460,7 +461,7 @@ struct TabItemView: View {
             // Top accent indicator for selected tab
             if isSelected {
                 Rectangle()
-                    .fill(Color.accentColor)
+                    .fill(TabBarColors.selectedIndicator(for: appearance, focused: isPaneFocused))
                     .frame(height: TabBarMetrics.activeIndicatorHeight)
             }
 

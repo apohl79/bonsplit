@@ -108,6 +108,7 @@ public enum BonsplitTabChromeDebugRenderer {
         let rootView = TabItemView(
             tab: tab,
             isSelected: scenario.isSelected,
+            isPaneFocused: scenario.saturation > 0.5,
             showsZoomIndicator: scenario.showsZoomIndicator,
             appearance: scenario.appearance,
             saturation: scenario.saturation,

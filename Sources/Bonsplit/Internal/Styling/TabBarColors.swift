@@ -6,8 +6,10 @@ enum TabBarColors {
     private enum Constants {
         static let darkTextAlpha: CGFloat = 0.82
         static let darkSecondaryTextAlpha: CGFloat = 0.62
+        static let darkTertiaryTextAlpha: CGFloat = 0.35
         static let lightTextAlpha: CGFloat = 0.82
         static let lightSecondaryTextAlpha: CGFloat = 0.68
+        static let lightTertiaryTextAlpha: CGFloat = 0.35
     }
 
     private static func chromeBackgroundColor(
@@ -46,6 +48,20 @@ enum TabBarColors {
 
         let alpha = secondary ? Constants.lightSecondaryTextAlpha : Constants.lightTextAlpha
         return NSColor.white.withAlphaComponent(alpha)
+    }
+
+    private static func effectiveInactiveSelectedIndicatorColor(
+        for appearance: BonsplitConfiguration.Appearance
+    ) -> NSColor {
+        guard let custom = chromeBackgroundColor(for: appearance) else {
+            return .tertiaryLabelColor
+        }
+
+        if custom.isBonsplitLightColor {
+            return NSColor.black.withAlphaComponent(Constants.darkTertiaryTextAlpha)
+        }
+
+        return NSColor.white.withAlphaComponent(Constants.lightTertiaryTextAlpha)
     }
 
     static func paneBackground(for appearance: BonsplitConfiguration.Appearance) -> Color {
@@ -173,6 +189,24 @@ enum TabBarColors {
     static func dropIndicator(for appearance: BonsplitConfiguration.Appearance) -> Color {
         _ = appearance
         return dropIndicator
+    }
+
+    static func selectedIndicator(
+        for appearance: BonsplitConfiguration.Appearance,
+        focused: Bool
+    ) -> Color {
+        Color(nsColor: nsColorSelectedIndicator(for: appearance, focused: focused))
+    }
+
+    static func nsColorSelectedIndicator(
+        for appearance: BonsplitConfiguration.Appearance,
+        focused: Bool
+    ) -> NSColor {
+        if focused {
+            return NSColor.controlAccentColor
+        }
+
+        return effectiveInactiveSelectedIndicatorColor(for: appearance)
     }
 
     static var focusRing: Color {
