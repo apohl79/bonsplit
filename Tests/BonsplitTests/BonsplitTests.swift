@@ -763,8 +763,12 @@ final class BonsplitTests: XCTestCase {
     func testTabControlShortcutHintPolicyMatchesConfiguredModifiers() {
         withShortcutHintDefaultsSuite { defaults in
             defaults.set(true, forKey: TabControlShortcutHintPolicy.showHintsOnCommandHoldKey)
+            defaults.set(true, forKey: TabControlShortcutHintPolicy.showHintsOnControlHoldKey)
 
-            XCTAssertNotNil(TabControlShortcutHintPolicy.hintModifier(for: [.control], defaults: defaults))
+            XCTAssertEqual(
+                TabControlShortcutHintPolicy.hintModifier(for: [.control], defaults: defaults)?.symbol,
+                "⌃"
+            )
             XCTAssertEqual(
                 TabControlShortcutHintPolicy.hintModifier(for: [.command], defaults: defaults)?.symbol,
                 "⌃"
@@ -784,28 +788,45 @@ final class BonsplitTests: XCTestCase {
                 forKey: "shortcut.selectSurfaceByNumber"
             )
 
-            let custom = TabControlShortcutHintPolicy.hintModifier(for: [.command, .option], defaults: defaults)
+            let custom = TabControlShortcutHintPolicy.hintModifier(for: [.command], defaults: defaults)
             XCTAssertEqual(custom?.symbol, "⌥⌘")
             XCTAssertEqual(
                 TabControlShortcutHintPolicy.hintModifier(for: [.command], defaults: defaults)?.symbol,
                 "⌥⌘"
             )
-            XCTAssertNil(TabControlShortcutHintPolicy.hintModifier(for: [.control], defaults: defaults))
+            XCTAssertEqual(
+                TabControlShortcutHintPolicy.hintModifier(for: [.control], defaults: defaults)?.symbol,
+                "⌥⌘"
+            )
         }
     }
 
-    func testTabControlShortcutHintPolicyCanDisableHoldHints() {
+    func testTabControlShortcutHintPolicyCanDisableCommandAndControlHoldHintsIndependently() {
         withShortcutHintDefaultsSuite { defaults in
             defaults.set(false, forKey: TabControlShortcutHintPolicy.showHintsOnCommandHoldKey)
+            defaults.set(true, forKey: TabControlShortcutHintPolicy.showHintsOnControlHoldKey)
 
-            XCTAssertNil(TabControlShortcutHintPolicy.hintModifier(for: [.control], defaults: defaults))
             XCTAssertNil(TabControlShortcutHintPolicy.hintModifier(for: [.command], defaults: defaults))
+            XCTAssertEqual(
+                TabControlShortcutHintPolicy.hintModifier(for: [.control], defaults: defaults)?.symbol,
+                "⌃"
+            )
+
+            defaults.set(true, forKey: TabControlShortcutHintPolicy.showHintsOnCommandHoldKey)
+            defaults.set(false, forKey: TabControlShortcutHintPolicy.showHintsOnControlHoldKey)
+
+            XCTAssertEqual(
+                TabControlShortcutHintPolicy.hintModifier(for: [.command], defaults: defaults)?.symbol,
+                "⌃"
+            )
+            XCTAssertNil(TabControlShortcutHintPolicy.hintModifier(for: [.control], defaults: defaults))
         }
     }
 
     func testTabControlShortcutHintPolicyDefaultsToShowingHoldHints() {
         withShortcutHintDefaultsSuite { defaults in
             defaults.removeObject(forKey: TabControlShortcutHintPolicy.showHintsOnCommandHoldKey)
+            defaults.removeObject(forKey: TabControlShortcutHintPolicy.showHintsOnControlHoldKey)
 
             XCTAssertEqual(TabControlShortcutHintPolicy.hintModifier(for: [.control], defaults: defaults)?.symbol, "⌃")
             XCTAssertEqual(TabControlShortcutHintPolicy.hintModifier(for: [.command], defaults: defaults)?.symbol, "⌃")
@@ -815,6 +836,7 @@ final class BonsplitTests: XCTestCase {
     func testTabControlShortcutHintsAreScopedToCurrentKeyWindow() {
         withShortcutHintDefaultsSuite { defaults in
             defaults.set(true, forKey: TabControlShortcutHintPolicy.showHintsOnCommandHoldKey)
+            defaults.set(true, forKey: TabControlShortcutHintPolicy.showHintsOnControlHoldKey)
 
             XCTAssertTrue(
                 TabControlShortcutHintPolicy.shouldShowHints(
@@ -854,6 +876,7 @@ final class BonsplitTests: XCTestCase {
     func testTabControlShortcutHintsFallbackToKeyWindowWhenEventWindowMissing() {
         withShortcutHintDefaultsSuite { defaults in
             defaults.set(true, forKey: TabControlShortcutHintPolicy.showHintsOnCommandHoldKey)
+            defaults.set(true, forKey: TabControlShortcutHintPolicy.showHintsOnControlHoldKey)
 
             XCTAssertTrue(
                 TabControlShortcutHintPolicy.shouldShowHints(

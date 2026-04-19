@@ -1261,7 +1261,9 @@ struct TabControlShortcutModifier: Equatable {
 enum TabControlShortcutHintPolicy {
     static let intentionalHoldDelay: TimeInterval = 0.30
     static let showHintsOnCommandHoldKey = "shortcutHintShowOnCommandHold"
+    static let showHintsOnControlHoldKey = "shortcutHintShowOnControlHold"
     static let defaultShowHintsOnCommandHold = true
+    static let defaultShowHintsOnControlHold = true
 
     static func showHintsOnCommandHoldEnabled(defaults: UserDefaults = .standard) -> Bool {
         guard defaults.object(forKey: showHintsOnCommandHoldKey) != nil else {
@@ -1270,19 +1272,35 @@ enum TabControlShortcutHintPolicy {
         return defaults.bool(forKey: showHintsOnCommandHoldKey)
     }
 
+    static func showHintsOnControlHoldEnabled(defaults: UserDefaults = .standard) -> Bool {
+        guard defaults.object(forKey: showHintsOnControlHoldKey) != nil else {
+            return defaultShowHintsOnControlHold
+        }
+        return defaults.bool(forKey: showHintsOnControlHoldKey)
+    }
+
+    private static func triggerAllowsHintReveal(
+        for modifierFlags: NSEvent.ModifierFlags,
+        defaults: UserDefaults = .standard
+    ) -> Bool {
+        let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
+            .subtracting([.numericPad, .function, .capsLock])
+        switch flags {
+        case [.command]:
+            return showHintsOnCommandHoldEnabled(defaults: defaults)
+        case [.control]:
+            return showHintsOnControlHoldEnabled(defaults: defaults)
+        default:
+            return false
+        }
+    }
+
     static func hintModifier(
         for modifierFlags: NSEvent.ModifierFlags,
         defaults: UserDefaults = .standard
     ) -> TabControlShortcutModifier? {
-        guard showHintsOnCommandHoldEnabled(defaults: defaults) else { return nil }
-        let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
-            .subtracting([.numericPad, .function, .capsLock])
+        guard triggerAllowsHintReveal(for: modifierFlags, defaults: defaults) else { return nil }
         let shortcut = TabControlShortcutSettings.surfaceByNumberShortcut(defaults: defaults)
-        if flags != shortcut.modifierFlags {
-            // Command-only hold reveals all hints (including pane hints), while
-            // control (or other modifiers) remains strict to the pane shortcut.
-            guard flags == [.command] else { return nil }
-        }
         return TabControlShortcutModifier(
             modifierFlags: shortcut.modifierFlags,
             symbol: shortcut.modifierSymbol
@@ -1310,7 +1328,7 @@ enum TabControlShortcutHintPolicy {
         keyWindowNumber: Int?,
         defaults: UserDefaults = .standard
     ) -> Bool {
-        hintModifier(for: modifierFlags, defaults: defaults) != nil &&
+        triggerAllowsHintReveal(for: modifierFlags, defaults: defaults) &&
             isCurrentWindow(
                 hostWindowNumber: hostWindowNumber,
                 hostWindowIsKey: hostWindowIsKey,
