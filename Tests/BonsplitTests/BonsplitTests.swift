@@ -1166,6 +1166,54 @@ final class BonsplitTests: XCTestCase {
     }
 
     @MainActor
+    func testTabBarDragZoneSingleClickDoesNotBlockLaterDoubleClickInMinimalMode() throws {
+        let view = TabBarDragZoneView.DragNSView(frame: NSRect(x: 0, y: 0, width: 160, height: 30))
+        view.isMinimalMode = true
+        view.isFocusedPane = true
+
+        var requestedNewTab = false
+        var dragged = false
+        view.onDoubleClick = {
+            requestedNewTab = true
+            return true
+        }
+        view.performWindowDrag = { _ in
+            dragged = true
+            return true
+        }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 200, height: 60),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        defer { window.orderOut(nil) }
+        guard let contentView = window.contentView else {
+            XCTFail("Expected content view")
+            return
+        }
+
+        contentView.addSubview(view)
+        window.makeKeyAndOrderFront(nil)
+        let firstDown = try makeLeftMouseDownEvent(in: view, at: NSPoint(x: 20, y: 15), clickCount: 1)
+        let firstUp = try makeMouseEvent(
+            type: .leftMouseUp,
+            in: view,
+            at: NSPoint(x: 20, y: 15),
+            clickCount: 1
+        )
+        let doubleClick = try makeLeftMouseDownEvent(in: view, at: NSPoint(x: 20, y: 15), clickCount: 2)
+
+        view.mouseDown(with: firstDown)
+        view.mouseUp(with: firstUp)
+        view.mouseDown(with: doubleClick)
+
+        XCTAssertTrue(requestedNewTab, "A prior single click must not leave the drag zone unable to handle double-clicks")
+        XCTAssertFalse(dragged, "A plain click followed by a double-click should not start a window drag")
+    }
+
+    @MainActor
     func testTabBarDragZoneDoubleClickRequestsNewTabInMinimalMode() throws {
         let view = TabBarDragZoneView.DragNSView(frame: NSRect(x: 0, y: 0, width: 160, height: 30))
         view.isMinimalMode = true
@@ -1241,13 +1289,8 @@ final class BonsplitTests: XCTestCase {
             at: NSPoint(x: 30, y: 15),
             clickCount: 1
         )
-        var returnedDragEvent = false
-        view.nextWindowDragEvent = { _ in
-            guard !returnedDragEvent else { return nil }
-            returnedDragEvent = true
-            return dragEvent
-        }
         view.mouseDown(with: event)
+        view.mouseDragged(with: dragEvent)
 
         XCTAssertFalse(focused, "Focused-pane drag zone should not bounce through first-click focus")
         XCTAssertTrue(dragged, "Focused-pane drag zone should continue to start window drags in minimal mode")

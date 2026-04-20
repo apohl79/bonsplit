@@ -1095,7 +1095,8 @@ struct TabBarDragZoneView: NSViewRepresentable {
         var onSingleClick: (() -> Bool)?
         var onDoubleClick: (() -> Bool)?
         var performWindowDrag: ((NSEvent) -> Bool)?
-        var nextWindowDragEvent: ((NSWindow) -> NSEvent?)?
+        private var pendingWindowDragEvent: NSEvent?
+        private var pendingWindowDragStart: NSPoint?
 
         private static let windowDragStartDistanceSquared: CGFloat = 16
 
@@ -1123,6 +1124,7 @@ struct TabBarDragZoneView: NSViewRepresentable {
             }
 
             if event.clickCount >= 2 {
+                clearPendingWindowDrag()
                 if onDoubleClick?() == true {
 #if DEBUG
                     dlog("tab.bar.dragZone.doubleClick action=newTab")
@@ -1140,6 +1142,7 @@ struct TabBarDragZoneView: NSViewRepresentable {
             }
 
             if isMinimalMode, !isFocusedPane, onSingleClick?() == true {
+                clearPendingWindowDrag()
 #if DEBUG
                 dlog("tab.bar.dragZone.focusPane")
 #endif
@@ -1147,68 +1150,63 @@ struct TabBarDragZoneView: NSViewRepresentable {
             }
 
             if isMinimalMode {
-                trackWindowDragIfNeeded(from: event, in: window)
+                pendingWindowDragEvent = event
+                pendingWindowDragStart = event.locationInWindow
             } else {
+                clearPendingWindowDrag()
                 super.mouseDown(with: event)
             }
         }
 
-        private func trackWindowDragIfNeeded(from event: NSEvent, in window: NSWindow) {
-            let start = event.locationInWindow
-            while true {
-                guard let nextEvent = nextTrackedEvent(in: window) else {
-#if DEBUG
-                    dlog("tab.bar.dragZone.dragTrack.end reason=noEvent")
-#endif
-                    return
-                }
-
-                switch nextEvent.type {
-                case .leftMouseDragged:
-                    let dx = nextEvent.locationInWindow.x - start.x
-                    let dy = nextEvent.locationInWindow.y - start.y
-                    guard dx * dx + dy * dy >= Self.windowDragStartDistanceSquared else {
-                        continue
-                    }
-#if DEBUG
-                    dlog(
-                        "tab.bar.dragZone.dragStart " +
-                        "dx=\(dx.rounded()) dy=\(dy.rounded())"
-                    )
-#endif
-                    startWindowDrag(with: event, in: window)
-                    return
-                case .leftMouseUp:
-#if DEBUG
-                    dlog("tab.bar.dragZone.dragTrack.end reason=mouseUp")
-#endif
-                    return
-                default:
-                    continue
-                }
+        override func mouseDragged(with event: NSEvent) {
+            guard isMinimalMode,
+                  let window,
+                  let pendingEvent = pendingWindowDragEvent,
+                  let start = pendingWindowDragStart else {
+                super.mouseDragged(with: event)
+                return
             }
+
+            let dx = event.locationInWindow.x - start.x
+            let dy = event.locationInWindow.y - start.y
+            guard dx * dx + dy * dy >= Self.windowDragStartDistanceSquared else {
+                return
+            }
+
+#if DEBUG
+            dlog(
+                "tab.bar.dragZone.dragStart " +
+                "dx=\(dx.rounded()) dy=\(dy.rounded())"
+            )
+#endif
+            clearPendingWindowDrag()
+            startWindowDrag(with: pendingEvent, in: window)
         }
 
-        private func nextTrackedEvent(in window: NSWindow) -> NSEvent? {
-            if let nextWindowDragEvent {
-                return nextWindowDragEvent(window)
-            }
-            return window.nextEvent(
-                matching: [.leftMouseDragged, .leftMouseUp],
-                until: .distantFuture,
-                inMode: .eventTracking,
-                dequeue: true
-            )
+        override func mouseUp(with event: NSEvent) {
+            clearPendingWindowDrag()
+            super.mouseUp(with: event)
+        }
+
+        private func clearPendingWindowDrag() {
+            pendingWindowDragEvent = nil
+            pendingWindowDragStart = nil
         }
 
         private func startWindowDrag(with event: NSEvent, in window: NSWindow) {
             if let performWindowDrag, performWindowDrag(event) {
+#if DEBUG
+                dlog("tab.bar.dragZone.dragStart action=testHook")
+#endif
                 return
             }
             let wasMovable = window.isMovable
             window.isMovable = true
             defer { window.isMovable = wasMovable }
             window.performDrag(with: event)
+#if DEBUG
+            dlog("tab.bar.dragZone.dragStart action=windowPerformDrag")
+#endif
         }
 
         private func performTitlebarDoubleClickAction(in window: NSWindow) {
