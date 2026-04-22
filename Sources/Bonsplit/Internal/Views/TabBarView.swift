@@ -455,8 +455,14 @@ struct TabBarView: View {
                         }
                         .frame(width: 0, height: 0)
                     )
-                    // When the tab strip is shorter than the visible area, allow dropping in the
-                    // empty trailing space without forcing tabs to stretch.
+                    // When the tab strip is shorter than the visible area, place a single
+                    // drag zone over both the empty trailing space AND the 30pt inline
+                    // dropZoneAfterTabs (extended leftward by 30pt). The inline zone's
+                    // DragNSView is then visually covered, so all clicks in this region land
+                    // on this overlay's single DragNSView. AppKit tracks `clickCount` per
+                    // view, so without this an unlucky shift in the inline/overlay boundary
+                    // between two clicks would split a double-click into two clickCount=1
+                    // events and the new-tab action would never fire.
                     .overlay(alignment: .trailing) {
                         let trailing = max(0, containerGeo.size.width - contentWidth)
                         if trailing >= 1 {
@@ -469,7 +475,7 @@ struct TabBarView: View {
                                 controller.requestNewTab(kind: "terminal", inPane: pane.id)
                                 return true
                             }
-                            .frame(width: trailing, height: TabBarMetrics.tabHeight)
+                            .frame(width: trailing + 30, height: TabBarMetrics.tabHeight)
                             .onDrop(of: [.tabTransfer], delegate: TabDropDelegate(
                                 targetIndex: pane.tabs.count,
                                 pane: pane,
@@ -1181,10 +1187,19 @@ struct TabBarDragZoneView: NSViewRepresentable {
         var onSingleClick: (() -> Bool)?
         var onDoubleClick: (() -> Bool)?
         var performWindowDrag: ((NSEvent) -> Bool)?
+        private var pendingWindowDragEvent: NSEvent?
+        private var pendingWindowDragStart: NSPoint?
 
-        override var mouseDownCanMoveWindow: Bool {
-            isMinimalMode && isFocusedPane
-        }
+        private static let windowDragStartDistanceSquared: CGFloat = 16
+
+        // Must stay false so AppKit does not intercept mouseUp as part of its
+        // own window-drag tracking. When AppKit steals mouseUp from the first
+        // click, the second click of a double-click is registered as a fresh
+        // clickCount=1 instead of 2, making new-tab double-clicks flaky. We
+        // still support window dragging via the custom mouseDragged →
+        // window.performDrag flow below. See `NonDraggableHostingView` in
+        // SplitNodeView.swift for the same class of bug on pane tab clicks.
+        override var mouseDownCanMoveWindow: Bool { false }
 
         override func hitTest(_ point: NSPoint) -> NSView? {
             return bounds.contains(point) ? self : nil
@@ -1192,9 +1207,12 @@ struct TabBarDragZoneView: NSViewRepresentable {
 
         override func mouseDown(with event: NSEvent) {
 #if DEBUG
+            let point = convert(event.locationInWindow, from: nil)
             dlog(
                 "tab.bar.dragZone.mouseDown isMinimal=\(isMinimalMode ? 1 : 0) " +
-                "focused=\(isFocusedPane ? 1 : 0) clickCount=\(event.clickCount)"
+                "focused=\(isFocusedPane ? 1 : 0) clickCount=\(event.clickCount) " +
+                "point=\(point.x.rounded()),\(point.y.rounded()) " +
+                "bounds=\(bounds.width.rounded())x\(bounds.height.rounded())"
             )
 #endif
             guard let window = self.window else {
@@ -1202,38 +1220,113 @@ struct TabBarDragZoneView: NSViewRepresentable {
                 return
             }
 
-            if event.clickCount >= 2 {
-                if isMinimalMode {
-                    let action = UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)?["AppleActionOnDoubleClick"] as? String
-                    switch action {
-                    case "Minimize": window.miniaturize(nil)
-                    default: window.zoom(nil)
-                    }
-                    return
-                } else {
+            // Standard (non-minimal) mode: a click in the empty trailing area
+            // should create a new tab on the very first click, not require a
+            // double-click. We dedupe subsequent clicks of the same gesture so
+            // a real double-click doesn't create two tabs back-to-back.
+            if !isMinimalMode {
+                clearPendingWindowDrag()
+                if event.clickCount == 1 {
                     if onDoubleClick?() == true {
+#if DEBUG
+                        dlog("tab.bar.dragZone.singleClick action=newTab")
+#endif
                         return
                     }
+                    super.mouseDown(with: event)
+                    return
                 }
+                // clickCount >= 2: same gesture as a click we already acted on.
+#if DEBUG
+                dlog("tab.bar.dragZone.click skipped reason=dedupeStandardMode clickCount=\(event.clickCount)")
+#endif
+                return
             }
 
-            if isMinimalMode, !isFocusedPane, onSingleClick?() == true {
+            if event.clickCount >= 2 {
+                clearPendingWindowDrag()
+                if onDoubleClick?() == true {
+#if DEBUG
+                    dlog("tab.bar.dragZone.doubleClick action=newTab")
+#endif
+                    return
+                }
+
+#if DEBUG
+                dlog("tab.bar.dragZone.doubleClick action=titlebar")
+#endif
+                performTitlebarDoubleClickAction(in: window)
+                return
+            }
+
+            if !isFocusedPane, onSingleClick?() == true {
+                clearPendingWindowDrag()
 #if DEBUG
                 dlog("tab.bar.dragZone.focusPane")
 #endif
                 return
             }
 
-            if isMinimalMode {
-                if let performWindowDrag, performWindowDrag(event) {
-                    return
-                }
-                let wasMovable = window.isMovable
-                window.isMovable = true
-                window.performDrag(with: event)
-                window.isMovable = wasMovable
-            } else {
-                super.mouseDown(with: event)
+            pendingWindowDragEvent = event
+            pendingWindowDragStart = event.locationInWindow
+        }
+
+        override func mouseDragged(with event: NSEvent) {
+            guard isMinimalMode,
+                  let window,
+                  let pendingEvent = pendingWindowDragEvent,
+                  let start = pendingWindowDragStart else {
+                super.mouseDragged(with: event)
+                return
+            }
+
+            let dx = event.locationInWindow.x - start.x
+            let dy = event.locationInWindow.y - start.y
+            guard dx * dx + dy * dy >= Self.windowDragStartDistanceSquared else {
+                return
+            }
+
+#if DEBUG
+            dlog(
+                "tab.bar.dragZone.dragStart " +
+                "dx=\(dx.rounded()) dy=\(dy.rounded())"
+            )
+#endif
+            clearPendingWindowDrag()
+            startWindowDrag(with: pendingEvent, in: window)
+        }
+
+        override func mouseUp(with event: NSEvent) {
+            clearPendingWindowDrag()
+            super.mouseUp(with: event)
+        }
+
+        private func clearPendingWindowDrag() {
+            pendingWindowDragEvent = nil
+            pendingWindowDragStart = nil
+        }
+
+        private func startWindowDrag(with event: NSEvent, in window: NSWindow) {
+            if let performWindowDrag, performWindowDrag(event) {
+#if DEBUG
+                dlog("tab.bar.dragZone.dragStart action=testHook")
+#endif
+                return
+            }
+            let wasMovable = window.isMovable
+            window.isMovable = true
+            defer { window.isMovable = wasMovable }
+            window.performDrag(with: event)
+#if DEBUG
+            dlog("tab.bar.dragZone.dragStart action=windowPerformDrag")
+#endif
+        }
+
+        private func performTitlebarDoubleClickAction(in window: NSWindow) {
+            let action = UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)?["AppleActionOnDoubleClick"] as? String
+            switch action {
+            case "Minimize": window.miniaturize(nil)
+            default: window.zoom(nil)
             }
         }
     }

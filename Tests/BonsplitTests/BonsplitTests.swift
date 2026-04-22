@@ -1276,6 +1276,172 @@ final class BonsplitTests: XCTestCase {
     }
 
     @MainActor
+    func testTabBarDragZoneSingleClickDoesNotBlockLaterDoubleClickInMinimalMode() throws {
+        let view = TabBarDragZoneView.DragNSView(frame: NSRect(x: 0, y: 0, width: 160, height: 30))
+        view.isMinimalMode = true
+        view.isFocusedPane = true
+
+        var requestedNewTab = false
+        var dragged = false
+        view.onDoubleClick = {
+            requestedNewTab = true
+            return true
+        }
+        view.performWindowDrag = { _ in
+            dragged = true
+            return true
+        }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 200, height: 60),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        defer { window.orderOut(nil) }
+        guard let contentView = window.contentView else {
+            XCTFail("Expected content view")
+            return
+        }
+
+        contentView.addSubview(view)
+        window.makeKeyAndOrderFront(nil)
+        let firstDown = try makeLeftMouseDownEvent(in: view, at: NSPoint(x: 20, y: 15), clickCount: 1)
+        let firstUp = try makeMouseEvent(
+            type: .leftMouseUp,
+            in: view,
+            at: NSPoint(x: 20, y: 15),
+            clickCount: 1
+        )
+        let doubleClick = try makeLeftMouseDownEvent(in: view, at: NSPoint(x: 20, y: 15), clickCount: 2)
+
+        view.mouseDown(with: firstDown)
+        view.mouseUp(with: firstUp)
+        view.mouseDown(with: doubleClick)
+
+        XCTAssertTrue(requestedNewTab, "A prior single click must not leave the drag zone unable to handle double-clicks")
+        XCTAssertFalse(dragged, "A plain click followed by a double-click should not start a window drag")
+    }
+
+    @MainActor
+    func testTabBarDragZoneDoubleClickRequestsNewTabInMinimalMode() throws {
+        let view = TabBarDragZoneView.DragNSView(frame: NSRect(x: 0, y: 0, width: 160, height: 30))
+        view.isMinimalMode = true
+        view.isFocusedPane = true
+
+        var requestedNewTab = false
+        var dragged = false
+        view.onDoubleClick = {
+            requestedNewTab = true
+            return true
+        }
+        view.performWindowDrag = { _ in
+            dragged = true
+            return true
+        }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 200, height: 60),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        defer { window.orderOut(nil) }
+        guard let contentView = window.contentView else {
+            XCTFail("Expected content view")
+            return
+        }
+
+        contentView.addSubview(view)
+        window.makeKeyAndOrderFront(nil)
+        let event = try makeLeftMouseDownEvent(in: view, at: NSPoint(x: 20, y: 15), clickCount: 2)
+        view.mouseDown(with: event)
+
+        XCTAssertTrue(requestedNewTab, "Minimal-mode drag zone double-click should request the new-tab action")
+        XCTAssertFalse(dragged, "Minimal-mode double-click should not start a window drag")
+    }
+
+    @MainActor
+    func testTabBarDragZoneSingleClickRequestsNewTabInStandardMode() throws {
+        let view = TabBarDragZoneView.DragNSView(frame: NSRect(x: 0, y: 0, width: 160, height: 30))
+        view.isMinimalMode = false
+        view.isFocusedPane = true
+
+        var newTabCount = 0
+        var dragged = false
+        view.onDoubleClick = {
+            newTabCount += 1
+            return true
+        }
+        view.performWindowDrag = { _ in
+            dragged = true
+            return true
+        }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 200, height: 60),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        defer { window.orderOut(nil) }
+        guard let contentView = window.contentView else {
+            XCTFail("Expected content view")
+            return
+        }
+
+        contentView.addSubview(view)
+        window.makeKeyAndOrderFront(nil)
+        let event = try makeLeftMouseDownEvent(in: view, at: NSPoint(x: 20, y: 15), clickCount: 1)
+        view.mouseDown(with: event)
+
+        XCTAssertEqual(newTabCount, 1, "Standard-mode drag zone single click should immediately request a new tab")
+        XCTAssertFalse(dragged, "Standard-mode drag zone single click should not begin a window drag")
+    }
+
+    @MainActor
+    func testTabBarDragZoneStandardModeDoubleClickCreatesOnlyOneTab() throws {
+        let view = TabBarDragZoneView.DragNSView(frame: NSRect(x: 0, y: 0, width: 160, height: 30))
+        view.isMinimalMode = false
+        view.isFocusedPane = true
+
+        var newTabCount = 0
+        view.onDoubleClick = {
+            newTabCount += 1
+            return true
+        }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 200, height: 60),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        defer { window.orderOut(nil) }
+        guard let contentView = window.contentView else {
+            XCTFail("Expected content view")
+            return
+        }
+
+        contentView.addSubview(view)
+        window.makeKeyAndOrderFront(nil)
+        let firstDown = try makeLeftMouseDownEvent(in: view, at: NSPoint(x: 20, y: 15), clickCount: 1)
+        let firstUp = try makeMouseEvent(
+            type: .leftMouseUp,
+            in: view,
+            at: NSPoint(x: 20, y: 15),
+            clickCount: 1
+        )
+        let secondDown = try makeLeftMouseDownEvent(in: view, at: NSPoint(x: 20, y: 15), clickCount: 2)
+
+        view.mouseDown(with: firstDown)
+        view.mouseUp(with: firstUp)
+        view.mouseDown(with: secondDown)
+
+        XCTAssertEqual(newTabCount, 1, "A standard-mode double-click must only create one tab; the clickCount=2 follow-up should be deduped")
+    }
+
+    @MainActor
     func testTabBarDragZoneKeepsFocusedPaneWindowDragInMinimalMode() throws {
         let view = TabBarDragZoneView.DragNSView(frame: NSRect(x: 0, y: 0, width: 160, height: 30))
         view.isMinimalMode = true
@@ -1307,11 +1473,18 @@ final class BonsplitTests: XCTestCase {
         contentView.addSubview(view)
         window.makeKeyAndOrderFront(nil)
         let event = try makeLeftMouseDownEvent(in: view, at: NSPoint(x: 20, y: 15), clickCount: 1)
+        let dragEvent = try makeMouseEvent(
+            type: .leftMouseDragged,
+            in: view,
+            at: NSPoint(x: 30, y: 15),
+            clickCount: 1
+        )
         view.mouseDown(with: event)
+        view.mouseDragged(with: dragEvent)
 
         XCTAssertFalse(focused, "Focused-pane drag zone should not bounce through first-click focus")
         XCTAssertTrue(dragged, "Focused-pane drag zone should continue to start window drags in minimal mode")
-        XCTAssertTrue(view.mouseDownCanMoveWindow, "Focused-pane drag zone should continue advertising window dragging to AppKit")
+        XCTAssertFalse(view.mouseDownCanMoveWindow, "Focused-pane drag zone must not advertise window dragging to AppKit or AppKit steals mouseUp and breaks new-tab double-clicks")
     }
 
     private func withShortcutHintDefaultsSuite(_ body: (UserDefaults) -> Void) {
@@ -1470,12 +1643,22 @@ final class BonsplitTests: XCTestCase {
         at point: NSPoint,
         clickCount: Int
     ) throws -> NSEvent {
+        try makeMouseEvent(type: .leftMouseDown, in: view, at: point, clickCount: clickCount)
+    }
+
+    @MainActor
+    private func makeMouseEvent(
+        type: NSEvent.EventType,
+        in view: NSView,
+        at point: NSPoint,
+        clickCount: Int
+    ) throws -> NSEvent {
         guard let window = view.window else {
             throw NSError(domain: "BonsplitTests", code: 1, userInfo: [NSLocalizedDescriptionKey: "Missing window"])
         }
         let pointInWindow = view.convert(point, to: nil)
         guard let event = NSEvent.mouseEvent(
-            with: .leftMouseDown,
+            with: type,
             location: pointInWindow,
             modifierFlags: [],
             timestamp: ProcessInfo.processInfo.systemUptime,
