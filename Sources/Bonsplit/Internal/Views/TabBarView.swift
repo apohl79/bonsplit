@@ -803,6 +803,15 @@ struct TabBarView: View {
             .safeHelp(tooltips.newBrowser)
 
             Button {
+                controller.requestNewTab(kind: "codex-app-server", inPane: pane.id)
+            } label: {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 12))
+            }
+            .buttonStyle(SplitActionButtonStyle(appearance: appearance))
+            .safeHelp(tooltips.newCodex)
+
+            Button {
                 // 120fps animation handled by SplitAnimator
                 controller.splitPane(pane.id, orientation: .horizontal)
             } label: {

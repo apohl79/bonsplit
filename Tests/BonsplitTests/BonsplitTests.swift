@@ -202,6 +202,7 @@ final class BonsplitTests: XCTestCase {
         let defaults = BonsplitConfiguration.SplitButtonTooltips.default
         XCTAssertEqual(defaults.newTerminal, "New Terminal")
         XCTAssertEqual(defaults.newBrowser, "New Browser")
+        XCTAssertEqual(defaults.newCodex, "New Codex")
         XCTAssertEqual(defaults.splitRight, "Split Right")
         XCTAssertEqual(defaults.splitDown, "Split Down")
     }
@@ -354,6 +355,7 @@ final class BonsplitTests: XCTestCase {
         let customTooltips = BonsplitConfiguration.SplitButtonTooltips(
             newTerminal: "Terminal (⌘T)",
             newBrowser: "Browser (⌘⇧L)",
+            newCodex: "Codex",
             splitRight: "Split Right (⌘D)",
             splitDown: "Split Down (⌘⇧D)"
         )

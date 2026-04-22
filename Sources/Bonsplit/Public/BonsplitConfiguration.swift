@@ -102,26 +102,29 @@ public struct BonsplitConfiguration: Sendable {
 // MARK: - Appearance Configuration
 
 extension BonsplitConfiguration {
-    public struct SplitButtonTooltips: Sendable, Equatable {
-        public var newTerminal: String
-        public var newBrowser: String
-        public var splitRight: String
-        public var splitDown: String
+        public struct SplitButtonTooltips: Sendable, Equatable {
+            public var newTerminal: String
+            public var newBrowser: String
+            public var newCodex: String
+            public var splitRight: String
+            public var splitDown: String
 
-        public static let `default` = SplitButtonTooltips()
+            public static let `default` = SplitButtonTooltips()
 
-        public init(
-            newTerminal: String = "New Terminal",
-            newBrowser: String = "New Browser",
-            splitRight: String = "Split Right",
-            splitDown: String = "Split Down"
-        ) {
-            self.newTerminal = newTerminal
-            self.newBrowser = newBrowser
-            self.splitRight = splitRight
-            self.splitDown = splitDown
+            public init(
+                newTerminal: String = "New Terminal",
+                newBrowser: String = "New Browser",
+                newCodex: String = "New Codex",
+                splitRight: String = "Split Right",
+                splitDown: String = "Split Down"
+            ) {
+                self.newTerminal = newTerminal
+                self.newBrowser = newBrowser
+                self.newCodex = newCodex
+                self.splitRight = splitRight
+                self.splitDown = splitDown
+            }
         }
-    }
 
     public struct Appearance: Sendable {
         public struct ChromeColors: Sendable {
