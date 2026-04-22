@@ -184,9 +184,7 @@ enum TabBarStyling {
     }
 
     static func imageDataShouldRenderAsTemplate(_ data: Data) -> Bool {
-        guard let text = String(data: data.prefix(4096), encoding: .utf8) else {
-            return false
-        }
+        let text = String(decoding: data.prefix(4096), as: UTF8.self)
         let lowercased = text.lowercased()
         return lowercased.contains("<svg") && lowercased.contains("currentcolor")
     }
