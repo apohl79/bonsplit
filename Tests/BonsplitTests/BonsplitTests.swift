@@ -266,6 +266,26 @@ final class BonsplitTests: XCTestCase {
         XCTAssertEqual(decoded, button)
     }
 
+    func testCurrentColorSVGImageDataRendersAsTemplate() throws {
+        let templateSVG = Data(
+            """
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <path fill="currentColor" d="M4 4h16v16H4z"/>
+            </svg>
+            """.utf8
+        )
+        let colorSVG = Data(
+            """
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <path fill="#D97757" d="M4 4h16v16H4z"/>
+            </svg>
+            """.utf8
+        )
+
+        XCTAssertTrue(TabBarStyling.imageDataShouldRenderAsTemplate(templateSVG))
+        XCTAssertFalse(TabBarStyling.imageDataShouldRenderAsTemplate(colorSVG))
+    }
+
     func testMinimalModeDoesNotReserveHiddenSplitButtonStrip() {
         XCTAssertEqual(
             TabBarStyling.trailingTabContentInset(showSplitButtons: true, isMinimalMode: true),

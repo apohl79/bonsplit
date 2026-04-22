@@ -183,6 +183,14 @@ enum TabBarStyling {
             + (CGFloat(max(0, buttonCount - 1)) * splitButtonsSpacing)
     }
 
+    static func imageDataShouldRenderAsTemplate(_ data: Data) -> Bool {
+        guard let text = String(data: data.prefix(4096), encoding: .utf8) else {
+            return false
+        }
+        let lowercased = text.lowercased()
+        return lowercased.contains("<svg") && lowercased.contains("currentcolor")
+    }
+
     enum ScrollTarget: Equatable {
         case leading
         case selectedTab(UUID)
@@ -852,8 +860,9 @@ struct TabBarView: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
         case .imageData(let data):
-            if let image = NSImage(data: data) {
+            if let image = splitActionButtonImage(from: data) {
                 Image(nsImage: image)
+                    .renderingMode(image.isTemplate ? .template : .original)
                     .resizable()
                     .interpolation(.high)
                     .scaledToFit()
@@ -863,6 +872,12 @@ struct TabBarView: View {
                     .font(.system(size: 12))
             }
         }
+    }
+
+    private func splitActionButtonImage(from data: Data) -> NSImage? {
+        guard let image = NSImage(data: data) else { return nil }
+        image.isTemplate = TabBarStyling.imageDataShouldRenderAsTemplate(data)
+        return image
     }
 
     private func splitActionButtonTooltip(
