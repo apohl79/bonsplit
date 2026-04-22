@@ -1108,6 +1108,9 @@ private struct SplitActionButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(TabBarColors.splitActionIcon(for: appearance, isPressed: configuration.isPressed))
+            .opacity(configuration.isPressed ? 0.72 : 1.0)
+            .scaleEffect(configuration.isPressed ? 0.92 : 1.0)
+            .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
     }
 }
 
