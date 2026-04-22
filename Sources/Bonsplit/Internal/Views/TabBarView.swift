@@ -1068,33 +1068,36 @@ struct TabBarView: View {
 private final class SplitActionButtonImageCache {
     static let shared = SplitActionButtonImageCache()
 
-    private var images: [Data: NSImage] = [:]
-    private var invalidImageData: Set<Data> = []
-    private let lock = NSLock()
+    private let images = NSCache<NSData, NSImage>()
+    private let invalidImageData = NSCache<NSData, NSNumber>()
+
+    private init() {
+        images.countLimit = 128
+        images.totalCostLimit = 8 * 1024 * 1024
+        invalidImageData.countLimit = 256
+        invalidImageData.totalCostLimit = 512 * 1024
+    }
 
     func image(for data: Data) -> NSImage? {
-        lock.lock()
-        if let image = images[data] {
-            lock.unlock()
+        let key = data as NSData
+        if let image = images.object(forKey: key) {
             return image
         }
-        if invalidImageData.contains(data) {
-            lock.unlock()
+        if invalidImageData.object(forKey: key) != nil {
             return nil
         }
-        lock.unlock()
 
         guard let image = NSImage(data: data) else {
-            lock.lock()
-            invalidImageData.insert(data)
-            lock.unlock()
+            invalidImageData.setObject(
+                NSNumber(value: true),
+                forKey: key,
+                cost: max(1, min(data.count, 1024))
+            )
             return nil
         }
         image.isTemplate = TabBarStyling.imageDataShouldRenderAsTemplate(data)
 
-        lock.lock()
-        images[data] = image
-        lock.unlock()
+        images.setObject(image, forKey: key, cost: max(1, data.count))
         return image
     }
 }
