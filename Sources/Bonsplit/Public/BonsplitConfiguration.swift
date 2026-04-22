@@ -285,6 +285,7 @@ extension BonsplitConfiguration {
             action: .splitDown
         )
 
+        /// Built-in split actions shown by default. Hosts can replace this list with custom buttons.
         public static let defaults: [SplitActionButton] = [
             .newTerminal,
             .newBrowser,
@@ -363,8 +364,13 @@ extension BonsplitConfiguration {
         /// Whether to show split buttons in the tab bar
         public var showSplitButtons: Bool
 
-        /// Ordered action buttons shown in the tab bar when split buttons are enabled
-        public var splitButtons: [SplitActionButton]
+        /// Ordered action buttons shown in the tab bar when split buttons are enabled.
+        /// Duplicate button ids are ignored, preserving the first matching button.
+        public var splitButtons: [SplitActionButton] {
+            didSet {
+                splitButtons = Self.uniqueSplitButtons(splitButtons)
+            }
+        }
 
         /// When true, split buttons are only visible on hover
         public var splitButtonsOnHover: Bool
@@ -434,13 +440,18 @@ extension BonsplitConfiguration {
             self.minimumPaneWidth = minimumPaneWidth
             self.minimumPaneHeight = minimumPaneHeight
             self.showSplitButtons = showSplitButtons
-            self.splitButtons = splitButtons
+            self.splitButtons = Self.uniqueSplitButtons(splitButtons)
             self.splitButtonsOnHover = splitButtonsOnHover
             self.tabBarLeadingInset = tabBarLeadingInset
             self.splitButtonTooltips = splitButtonTooltips
             self.animationDuration = animationDuration
             self.enableAnimations = enableAnimations
             self.chromeColors = chromeColors
+        }
+
+        private static func uniqueSplitButtons(_ buttons: [SplitActionButton]) -> [SplitActionButton] {
+            var seenIds = Set<String>()
+            return buttons.filter { seenIds.insert($0.id).inserted }
         }
     }
 }

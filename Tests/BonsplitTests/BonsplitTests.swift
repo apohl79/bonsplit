@@ -529,6 +529,30 @@ final class BonsplitTests: XCTestCase {
         XCTAssertEqual(controller.configuration.appearance.splitButtons, buttons)
     }
 
+    func testAppearanceKeepsFirstSplitActionButtonForDuplicateIds() {
+        let firstRunTests = BonsplitConfiguration.SplitActionButton(
+            id: "run-tests",
+            systemImage: "checkmark.circle",
+            tooltip: "Run tests",
+            action: .custom("run-tests")
+        )
+        let duplicateRunTests = BonsplitConfiguration.SplitActionButton(
+            id: "run-tests",
+            systemImage: "xmark.circle",
+            tooltip: "Duplicate",
+            action: .custom("duplicate")
+        )
+        var appearance = BonsplitConfiguration.Appearance(
+            splitButtons: [.newTerminal, .newTerminal, firstRunTests, duplicateRunTests]
+        )
+
+        XCTAssertEqual(appearance.splitButtons, [.newTerminal, firstRunTests])
+
+        appearance.splitButtons = [duplicateRunTests, firstRunTests, .splitRight]
+
+        XCTAssertEqual(appearance.splitButtons, [duplicateRunTests, .splitRight])
+    }
+
     @MainActor
     func testControllerRequestsCustomAction() {
         let controller = BonsplitController()
