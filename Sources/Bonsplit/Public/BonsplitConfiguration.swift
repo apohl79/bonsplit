@@ -105,7 +105,7 @@ extension BonsplitConfiguration {
     public struct SplitActionButton: Sendable, Codable, Hashable, Identifiable {
         public enum Icon: Sendable, Codable, Hashable {
             case systemImage(String)
-            case emoji(String)
+            case emoji(String, scale: Double = 1)
             case imageData(Data)
 
             private enum CodingKeys: String, CodingKey {
@@ -113,6 +113,7 @@ extension BonsplitConfiguration {
                 case name
                 case value
                 case data
+                case scale
             }
 
             public init(from decoder: Decoder) throws {
@@ -127,7 +128,10 @@ extension BonsplitConfiguration {
                 case "systemImage", "symbol", "sfSymbol":
                     self = .systemImage(try container.decode(String.self, forKey: .name))
                 case "emoji":
-                    self = .emoji(try container.decode(String.self, forKey: .value))
+                    self = .emoji(
+                        try container.decode(String.self, forKey: .value),
+                        scale: try Self.emojiScale(in: container)
+                    )
                 case "imageData":
                     self = .imageData(try container.decode(Data.self, forKey: .data))
                 default:
@@ -145,13 +149,28 @@ extension BonsplitConfiguration {
                 case .systemImage(let name):
                     try container.encode("systemImage", forKey: .type)
                     try container.encode(name, forKey: .name)
-                case .emoji(let value):
+                case .emoji(let value, let scale):
                     try container.encode("emoji", forKey: .type)
                     try container.encode(value, forKey: .value)
+                    if scale != 1 {
+                        try container.encode(scale, forKey: .scale)
+                    }
                 case .imageData(let data):
                     try container.encode("imageData", forKey: .type)
                     try container.encode(data, forKey: .data)
                 }
+            }
+
+            private static func emojiScale(in container: KeyedDecodingContainer<CodingKeys>) throws -> Double {
+                let scale = try container.decodeIfPresent(Double.self, forKey: .scale) ?? 1
+                guard scale.isFinite, scale > 0 else {
+                    throw DecodingError.dataCorruptedError(
+                        forKey: .scale,
+                        in: container,
+                        debugDescription: "Emoji icon scale must be a positive number"
+                    )
+                }
+                return scale
             }
         }
 

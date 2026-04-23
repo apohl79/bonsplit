@@ -269,7 +269,7 @@ final class BonsplitTests: XCTestCase {
     func testCustomSplitActionButtonSupportsEmojiIcon() throws {
         let button = BonsplitConfiguration.SplitActionButton(
             id: "agent",
-            icon: .emoji("🤖"),
+            icon: .emoji("🤖", scale: 0.85),
             tooltip: "Start agent",
             action: .custom("agent")
         )

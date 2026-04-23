@@ -852,9 +852,9 @@ struct TabBarView: View {
         case .systemImage(let name):
             Image(systemName: name)
                 .font(.system(size: 12))
-        case .emoji(let value):
+        case .emoji(let value, let scale):
             Text(value)
-                .font(.system(size: 13))
+                .font(.system(size: emojiIconFontSize(scale: scale)))
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
         case .imageData(let data):
@@ -870,6 +870,16 @@ struct TabBarView: View {
                     .font(.system(size: 12))
             }
         }
+    }
+
+    private func emojiIconFontSize(scale: Double) -> CGFloat {
+        let safeScale: CGFloat
+        if scale.isFinite, scale > 0 {
+            safeScale = CGFloat(scale)
+        } else {
+            safeScale = 1
+        }
+        return 13 * safeScale
     }
 
     private func splitActionButtonImage(from data: Data) -> NSImage? {
