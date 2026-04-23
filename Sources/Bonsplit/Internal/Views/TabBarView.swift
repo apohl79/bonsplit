@@ -1134,6 +1134,7 @@ private struct TabBarDragAndHoverView: NSViewRepresentable {
         nsView.isMinimalMode = isMinimalMode
         nsView.onDoubleClick = onDoubleClick
         nsView.onHoverChanged = onHoverChanged
+        nsView.syncHoverStateToCurrentMouseLocation()
     }
 
     final class TabBarBackgroundNSView: NSView {
@@ -1141,18 +1142,26 @@ private struct TabBarDragAndHoverView: NSViewRepresentable {
         var onDoubleClick: (() -> Bool)?
         var onHoverChanged: ((Bool) -> Void)?
         private var hoverTrackingArea: NSTrackingArea?
+        private var windowDidBecomeKeyObserver: NSObjectProtocol?
+        private var windowDidResignKeyObserver: NSObjectProtocol?
 
         override var mouseDownCanMoveWindow: Bool { false }
 
         deinit {
+            removeWindowObservers()
             BonsplitTabBarHitRegionRegistry.unregister(self)
         }
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             BonsplitTabBarHitRegionRegistry.unregister(self)
+            removeWindowObservers()
             if window != nil {
                 BonsplitTabBarHitRegionRegistry.register(self)
+                installWindowObservers()
+                syncHoverStateToCurrentMouseLocation()
+            } else {
+                onHoverChanged?(false)
             }
         }
 
@@ -1175,6 +1184,7 @@ private struct TabBarDragAndHoverView: NSViewRepresentable {
             )
             addTrackingArea(area)
             hoverTrackingArea = area
+            syncHoverStateToCurrentMouseLocation()
         }
 
         override func mouseEntered(with event: NSEvent) {
@@ -1214,6 +1224,44 @@ private struct TabBarDragAndHoverView: NSViewRepresentable {
             window.isMovable = true
             window.performDrag(with: event)
             window.isMovable = wasMovable
+        }
+
+        func syncHoverStateToCurrentMouseLocation() {
+            guard let window else {
+                onHoverChanged?(false)
+                return
+            }
+            let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+            onHoverChanged?(bounds.contains(point))
+        }
+
+        private func installWindowObservers() {
+            guard let window else { return }
+            windowDidBecomeKeyObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didBecomeKeyNotification,
+                object: window,
+                queue: .main
+            ) { [weak self] _ in
+                self?.syncHoverStateToCurrentMouseLocation()
+            }
+            windowDidResignKeyObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didResignKeyNotification,
+                object: window,
+                queue: .main
+            ) { [weak self] _ in
+                self?.syncHoverStateToCurrentMouseLocation()
+            }
+        }
+
+        private func removeWindowObservers() {
+            if let windowDidBecomeKeyObserver {
+                NotificationCenter.default.removeObserver(windowDidBecomeKeyObserver)
+                self.windowDidBecomeKeyObserver = nil
+            }
+            if let windowDidResignKeyObserver {
+                NotificationCenter.default.removeObserver(windowDidResignKeyObserver)
+                self.windowDidResignKeyObserver = nil
+            }
         }
     }
 }
