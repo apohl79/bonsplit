@@ -40,6 +40,15 @@ public final class BonsplitController {
         didSet { internalController.isInteractive = isInteractive }
     }
 
+    /// Whether pane tab shortcut hints are currently actionable.
+    ///
+    /// Pane focus is internal to Bonsplit, but host apps can move keyboard focus
+    /// to external controls while keeping the focused pane selected. Set this
+    /// to false when pane-number shortcuts should not currently be advertised.
+    public var tabShortcutHintsEnabled: Bool = true {
+        didSet { internalController.tabShortcutHintsEnabled = tabShortcutHintsEnabled }
+    }
+
     /// Handler for file/URL drops from external apps (e.g., Finder).
     /// Called when files are dropped onto a pane's content area.
     /// Return `true` if the drop was handled.

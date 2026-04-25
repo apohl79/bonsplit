@@ -43,6 +43,7 @@ struct TabItemView: View {
     let appearance: BonsplitConfiguration.Appearance
     let saturation: Double
     let controlShortcutDigit: Int?
+    let allowsShortcutHints: Bool
     let showsControlShortcutHint: Bool
     let shortcutModifierSymbol: String
     let contextMenuState: TabContextMenuState
@@ -212,7 +213,7 @@ struct TabItemView: View {
     }
 
     private var showsShortcutHint: Bool {
-        (showsControlShortcutHint || alwaysShowShortcutHints) && shortcutHintLabel != nil
+        allowsShortcutHints && (showsControlShortcutHint || alwaysShowShortcutHints) && shortcutHintLabel != nil
     }
 
     private var shortcutHintSlotWidth: CGFloat {

@@ -351,7 +351,7 @@ struct TabBarView: View {
     }
 
     private var showsControlShortcutHints: Bool {
-        isFocused && controlKeyMonitor.isShortcutHintVisible
+        isFocused && splitViewController.tabShortcutHintsEnabled && controlKeyMonitor.isShortcutHintVisible
     }
 
     private var isMinimalMode: Bool {
@@ -605,6 +605,7 @@ struct TabBarView: View {
             appearance: appearance,
             saturation: tabBarSaturation,
             controlShortcutDigit: tabControlShortcutDigit(for: index, tabCount: pane.tabs.count),
+            allowsShortcutHints: isFocused && splitViewController.tabShortcutHintsEnabled,
             showsControlShortcutHint: showsControlShortcutHints,
             shortcutModifierSymbol: controlKeyMonitor.shortcutModifierSymbol,
             contextMenuState: contextMenuState,

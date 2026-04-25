@@ -36,6 +36,11 @@ final class SplitViewController {
     /// updateNSView is called to toggle isHidden on the AppKit containers.
     var isInteractive: Bool = true
 
+    /// When false, pane tab shortcut hints stay hidden even if this pane is
+    /// selected. The host app owns this because keyboard focus can move outside
+    /// Bonsplit while the selected pane remains unchanged.
+    var tabShortcutHintsEnabled: Bool = true
+
     /// Handler for file/URL drops from external apps (e.g. Finder).
     /// Receives the dropped URLs and the pane ID where the drop occurred.
     @ObservationIgnored var onFileDrop: ((_ urls: [URL], _ paneId: PaneID) -> Bool)?

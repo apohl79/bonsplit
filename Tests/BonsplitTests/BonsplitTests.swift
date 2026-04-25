@@ -1159,6 +1159,19 @@ final class BonsplitTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testControllerMirrorsTabShortcutHintEligibilityToInternalController() {
+        let controller = BonsplitController()
+
+        XCTAssertTrue(controller.tabShortcutHintsEnabled)
+        XCTAssertTrue(controller.internalController.tabShortcutHintsEnabled)
+
+        controller.tabShortcutHintsEnabled = false
+
+        XCTAssertFalse(controller.tabShortcutHintsEnabled)
+        XCTAssertFalse(controller.internalController.tabShortcutHintsEnabled)
+    }
+
     func testSelectedTabNeverShowsHoverBackground() {
         XCTAssertFalse(
             TabItemStyling.shouldShowHoverBackground(isHovered: true, isSelected: true)
