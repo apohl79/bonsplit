@@ -975,10 +975,8 @@ struct TabBarView: View {
             let g = fg.greenComponent * a + bk.greenComponent * oneMinusA
             let b = fg.blueComponent * a + bk.blueComponent * oneMinusA
             return NSColor(red: r, green: g, blue: b, alpha: 1.0)
-        default: // 0: tab bar chrome, preserving translucency
-            let backdrop = TabBarColors.nsColorSplitButtonBackdrop(for: appearance)
-            let alpha = focused ? backdrop.alphaComponent : backdrop.alphaComponent * 0.95
-            return backdrop.withAlphaComponent(alpha)
+        default: // 0: pre-composited pane background over window background
+            return TabBarColors.nsColorSplitButtonBackdrop(for: appearance, focused: focused)
         }
     }
 

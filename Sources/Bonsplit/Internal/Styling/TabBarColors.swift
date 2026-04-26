@@ -40,6 +40,24 @@ enum TabBarColors {
         chromeBackgroundColor(for: appearance) ?? fallbackColor
     }
 
+    private static func precompositedPaneBackground(
+        for appearance: BonsplitConfiguration.Appearance,
+        focused: Bool
+    ) -> NSColor {
+        let chrome = nsColorPaneBackground(for: appearance)
+        let windowBackground = NSColor.windowBackgroundColor
+        guard let foreground = chrome.usingColorSpace(.sRGB),
+              let background = windowBackground.usingColorSpace(.sRGB) else {
+            return chrome.withAlphaComponent(1.0)
+        }
+        let alpha = focused ? foreground.alphaComponent : foreground.alphaComponent * 0.95
+        let oneMinusAlpha = 1.0 - alpha
+        let red = foreground.redComponent * alpha + background.redComponent * oneMinusAlpha
+        let green = foreground.greenComponent * alpha + background.greenComponent * oneMinusAlpha
+        let blue = foreground.blueComponent * alpha + background.blueComponent * oneMinusAlpha
+        return NSColor(red: red, green: green, blue: blue, alpha: 1.0)
+    }
+
     private static func effectiveTextColor(
         for appearance: BonsplitConfiguration.Appearance,
         secondary: Bool
@@ -75,8 +93,11 @@ enum TabBarColors {
         Color(nsColor: effectiveBackgroundColor(for: appearance, fallback: .windowBackgroundColor))
     }
 
-    static func nsColorSplitButtonBackdrop(for appearance: BonsplitConfiguration.Appearance) -> NSColor {
-        effectiveBackgroundColor(for: appearance, fallback: .windowBackgroundColor)
+    static func nsColorSplitButtonBackdrop(
+        for appearance: BonsplitConfiguration.Appearance,
+        focused: Bool = true
+    ) -> NSColor {
+        precompositedPaneBackground(for: appearance, focused: focused)
     }
 
     static func shouldPaintSplitButtonBackdrop(for appearance: BonsplitConfiguration.Appearance) -> Bool {
