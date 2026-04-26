@@ -98,6 +98,16 @@ final class BonsplitTests: XCTestCase {
         }
     }
 
+    private final class CustomActionDelegateSpy: BonsplitDelegate {
+        var requestedIdentifier: String?
+        var requestedPaneId: PaneID?
+
+        func splitTabBar(_ controller: BonsplitController, didRequestCustomAction identifier: String, inPane pane: PaneID) {
+            requestedIdentifier = identifier
+            requestedPaneId = pane
+        }
+    }
+
     @MainActor
     func testControllerCreation() {
         let controller = BonsplitController()
@@ -207,6 +217,127 @@ final class BonsplitTests: XCTestCase {
         XCTAssertEqual(defaults.splitDown, "Split Down")
     }
 
+    func testDefaultSplitActionButtons() {
+        XCTAssertEqual(
+            BonsplitConfiguration.SplitActionButton.defaults,
+            [.newTerminal, .newBrowser, .newCodex, .splitRight, .splitDown]
+        )
+    }
+
+    func testCustomSplitActionButtonRoundTrips() throws {
+        let button = BonsplitConfiguration.SplitActionButton(
+            id: "run-tests",
+            systemImage: "checkmark.circle",
+            tooltip: "Run tests",
+            action: .custom("run-tests")
+        )
+
+        let data = try JSONEncoder().encode(button)
+        let decoded = try JSONDecoder().decode(BonsplitConfiguration.SplitActionButton.self, from: data)
+
+        XCTAssertEqual(decoded, button)
+    }
+
+    func testCustomSplitActionButtonPreservesReservedActionName() throws {
+        let button = BonsplitConfiguration.SplitActionButton(
+            id: "custom-terminal",
+            systemImage: "terminal",
+            tooltip: "Custom terminal action",
+            action: .custom("newTerminal")
+        )
+
+        let data = try JSONEncoder().encode(button)
+        let decoded = try JSONDecoder().decode(BonsplitConfiguration.SplitActionButton.self, from: data)
+
+        XCTAssertEqual(decoded.action, .custom("newTerminal"))
+        XCTAssertEqual(decoded, button)
+    }
+
+    func testSplitActionButtonDecodesLegacyBuiltInActionString() throws {
+        let data = #"""
+        {
+          "id": "terminal",
+          "icon": { "type": "systemImage", "name": "terminal" },
+          "action": "newTerminal"
+        }
+        """#.data(using: .utf8)!
+
+        let decoded = try JSONDecoder().decode(BonsplitConfiguration.SplitActionButton.self, from: data)
+
+        XCTAssertEqual(decoded.action, .newTerminal)
+    }
+
+    func testCustomSplitActionButtonSupportsEmojiIcon() throws {
+        let button = BonsplitConfiguration.SplitActionButton(
+            id: "agent",
+            icon: .emoji("🤖", scale: 0.85),
+            tooltip: "Start agent",
+            action: .custom("agent")
+        )
+
+        let data = try JSONEncoder().encode(button)
+        let decoded = try JSONDecoder().decode(BonsplitConfiguration.SplitActionButton.self, from: data)
+
+        XCTAssertEqual(decoded, button)
+    }
+
+    func testCustomSplitActionButtonSupportsImageDataIcon() throws {
+        let data = Data([0x89, 0x50, 0x4E, 0x47])
+        let button = BonsplitConfiguration.SplitActionButton(
+            id: "image-agent",
+            icon: .imageData(data),
+            tooltip: "Start image agent",
+            action: .custom("image-agent")
+        )
+
+        let encoded = try JSONEncoder().encode(button)
+        let decoded = try JSONDecoder().decode(BonsplitConfiguration.SplitActionButton.self, from: encoded)
+
+        XCTAssertEqual(decoded, button)
+    }
+
+    func testCurrentColorSVGImageDataRendersAsTemplate() throws {
+        let templateSVG = Data(
+            """
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <path fill="currentColor" d="M4 4h16v16H4z"/>
+            </svg>
+            """.utf8
+        )
+        let colorSVG = Data(
+            """
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <path fill="#D97757" d="M4 4h16v16H4z"/>
+            </svg>
+            """.utf8
+        )
+
+        XCTAssertTrue(TabBarStyling.imageDataShouldRenderAsTemplate(templateSVG))
+        XCTAssertFalse(TabBarStyling.imageDataShouldRenderAsTemplate(colorSVG))
+    }
+
+    func testCurrentColorSVGImageDataRendersAsTemplateWithInvalidUTF8Suffix() throws {
+        var svg = Data(
+            """
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <path fill="currentColor" d="M4 4h16v16H4z"/>
+            </svg>
+            """.utf8
+        )
+        svg.append(0xE2)
+
+        XCTAssertTrue(TabBarStyling.imageDataShouldRenderAsTemplate(svg))
+    }
+
+    @MainActor
+    func testSplitActionButtonImageDataIsCached() throws {
+        let png = try XCTUnwrap(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="))
+        let first = try XCTUnwrap(TabBarStyling.splitActionButtonImage(from: png))
+        let second = try XCTUnwrap(TabBarStyling.splitActionButtonImage(from: png))
+
+        XCTAssertTrue(first === second)
+    }
+
     func testMinimalModeDoesNotReserveHiddenSplitButtonStrip() {
         XCTAssertEqual(
             TabBarStyling.trailingTabContentInset(showSplitButtons: true, isMinimalMode: true),
@@ -215,8 +346,18 @@ final class BonsplitTests: XCTestCase {
         )
         XCTAssertEqual(
             TabBarStyling.trailingTabContentInset(showSplitButtons: true, isMinimalMode: false),
-            TabBarStyling.splitButtonsBackdropWidth,
+            TabBarStyling.splitButtonsBackdropWidth(buttonCount: 5),
             "Standard mode should keep reserving space for the always-visible split buttons"
+        )
+        XCTAssertEqual(
+            TabBarStyling.trailingTabContentInset(showSplitButtons: true, isMinimalMode: false, buttonCount: 2),
+            TabBarStyling.splitButtonsBackdropWidth(buttonCount: 2),
+            "Standard mode should reserve space for the configured split buttons only"
+        )
+        XCTAssertEqual(
+            TabBarStyling.trailingTabContentInset(showSplitButtons: true, isMinimalMode: false, buttonCount: 0),
+            0,
+            "No strip should be reserved when the configured split button list is empty"
         )
         XCTAssertEqual(
             TabBarStyling.trailingTabContentInset(showSplitButtons: false, isMinimalMode: false),
@@ -367,6 +508,64 @@ final class BonsplitTests: XCTestCase {
         let controller = BonsplitController(configuration: config)
 
         XCTAssertEqual(controller.configuration.appearance.splitButtonTooltips, customTooltips)
+    }
+
+    @MainActor
+    func testConfigurationAcceptsCustomSplitActionButtons() {
+        let buttons: [BonsplitConfiguration.SplitActionButton] = [
+            .newTerminal,
+            .init(
+                id: "run-tests",
+                systemImage: "checkmark.circle",
+                tooltip: "Run tests",
+                action: .custom("run-tests")
+            ),
+        ]
+        let config = BonsplitConfiguration(
+            appearance: .init(
+                splitButtons: buttons
+            )
+        )
+        let controller = BonsplitController(configuration: config)
+
+        XCTAssertEqual(controller.configuration.appearance.splitButtons, buttons)
+    }
+
+    func testAppearanceKeepsFirstSplitActionButtonForDuplicateIds() {
+        let firstRunTests = BonsplitConfiguration.SplitActionButton(
+            id: "run-tests",
+            systemImage: "checkmark.circle",
+            tooltip: "Run tests",
+            action: .custom("run-tests")
+        )
+        let duplicateRunTests = BonsplitConfiguration.SplitActionButton(
+            id: "run-tests",
+            systemImage: "xmark.circle",
+            tooltip: "Duplicate",
+            action: .custom("duplicate")
+        )
+        var appearance = BonsplitConfiguration.Appearance(
+            splitButtons: [.newTerminal, .newTerminal, firstRunTests, duplicateRunTests]
+        )
+
+        XCTAssertEqual(appearance.splitButtons, [.newTerminal, firstRunTests])
+
+        appearance.splitButtons = [duplicateRunTests, firstRunTests, .splitRight]
+
+        XCTAssertEqual(appearance.splitButtons, [duplicateRunTests, .splitRight])
+    }
+
+    @MainActor
+    func testControllerRequestsCustomAction() {
+        let controller = BonsplitController()
+        let delegate = CustomActionDelegateSpy()
+        controller.delegate = delegate
+        let paneId = controller.focusedPaneId!
+
+        controller.requestCustomAction("run-tests", inPane: paneId)
+
+        XCTAssertEqual(delegate.requestedIdentifier, "run-tests")
+        XCTAssertEqual(delegate.requestedPaneId, paneId)
     }
 
     func testChromeBackgroundHexOverrideParsesForPaneBackground() {
@@ -676,7 +875,7 @@ final class BonsplitTests: XCTestCase {
 
     @MainActor
     func testDoubleClickingEmptyTrailingTabBarSpaceRequestsNewTerminalTab() {
-        let appearance = BonsplitConfiguration.Appearance(showSplitButtons: false)
+        let appearance = BonsplitConfiguration.Appearance()
         let configuration = BonsplitConfiguration(appearance: appearance)
         let controller = BonsplitController(configuration: configuration)
         let pane = controller.internalController.rootNode.allPanes.first!
@@ -684,7 +883,7 @@ final class BonsplitTests: XCTestCase {
         controller.delegate = spy
 
         let hostingView = NSHostingView(
-            rootView: TabBarView(pane: pane, isFocused: true, showSplitButtons: false)
+            rootView: TabBarView(pane: pane, isFocused: true, showSplitButtons: true)
                 .environment(controller)
                 .environment(controller.internalController)
         )
@@ -710,14 +909,72 @@ final class BonsplitTests: XCTestCase {
         contentView.layoutSubtreeIfNeeded()
 
         let clickPoint = NSPoint(x: hostingView.bounds.maxX - 12, y: hostingView.bounds.midY)
-        guard let event = try? makeLeftMouseDownEvent(in: hostingView, at: clickPoint, clickCount: 2) else {
-            XCTFail("Expected mouse event")
+        let pointInWindow = hostingView.convert(clickPoint, to: nil)
+        guard let hitView = waitForDescendant(
+            ofType: TabBarDragZoneView.DragNSView.self,
+            in: contentView,
+            containingWindowPoint: pointInWindow,
+            where: { $0.onDoubleClick != nil }
+        ) else {
+            XCTFail("Expected trailing tab bar drag zone")
             return
         }
-        NSApp.sendEvent(event)
+        XCTAssertEqual(hitView.onDoubleClick?(), true)
 
         XCTAssertEqual(spy.requestedKind, "terminal")
         XCTAssertEqual(spy.requestedPaneId, pane.id)
+    }
+
+    @MainActor
+    func testEmptyTrailingTabBarSpaceDoesNotRequestNewTerminalWhenButtonHidden() {
+        let appearance = BonsplitConfiguration.Appearance(splitButtons: [])
+        let configuration = BonsplitConfiguration(appearance: appearance)
+        let controller = BonsplitController(configuration: configuration)
+        let pane = controller.internalController.rootNode.allPanes.first!
+        let spy = NewTabRequestDelegateSpy()
+        controller.delegate = spy
+
+        let hostingView = NSHostingView(
+            rootView: TabBarView(pane: pane, isFocused: true, showSplitButtons: true)
+                .environment(controller)
+                .environment(controller.internalController)
+        )
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 60),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        defer { window.orderOut(nil) }
+        guard let contentView = window.contentView else {
+            XCTFail("Expected content view")
+            return
+        }
+
+        hostingView.frame = contentView.bounds
+        hostingView.autoresizingMask = [.width, .height]
+        contentView.addSubview(hostingView)
+
+        window.makeKeyAndOrderFront(nil)
+        contentView.layoutSubtreeIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        contentView.layoutSubtreeIfNeeded()
+
+        let clickPoint = NSPoint(x: hostingView.bounds.maxX - 12, y: hostingView.bounds.midY)
+        let pointInWindow = hostingView.convert(clickPoint, to: nil)
+        guard let hitView = waitForDescendant(
+            ofType: TabBarDragZoneView.DragNSView.self,
+            in: contentView,
+            containingWindowPoint: pointInWindow,
+            where: { $0.onDoubleClick != nil }
+        ) else {
+            XCTFail("Expected trailing tab bar drag zone")
+            return
+        }
+        XCTAssertEqual(hitView.onDoubleClick?(), false)
+
+        XCTAssertNil(spy.requestedKind)
+        XCTAssertNil(spy.requestedPaneId)
     }
 
     func testIconSaturationKeepsRasterFaviconInColorWhenInactive() {
@@ -1168,6 +1425,172 @@ final class BonsplitTests: XCTestCase {
     }
 
     @MainActor
+    func testTabBarDragZoneSingleClickDoesNotBlockLaterDoubleClickInMinimalMode() throws {
+        let view = TabBarDragZoneView.DragNSView(frame: NSRect(x: 0, y: 0, width: 160, height: 30))
+        view.isMinimalMode = true
+        view.isFocusedPane = true
+
+        var requestedNewTab = false
+        var dragged = false
+        view.onDoubleClick = {
+            requestedNewTab = true
+            return true
+        }
+        view.performWindowDrag = { _ in
+            dragged = true
+            return true
+        }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 200, height: 60),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        defer { window.orderOut(nil) }
+        guard let contentView = window.contentView else {
+            XCTFail("Expected content view")
+            return
+        }
+
+        contentView.addSubview(view)
+        window.makeKeyAndOrderFront(nil)
+        let firstDown = try makeLeftMouseDownEvent(in: view, at: NSPoint(x: 20, y: 15), clickCount: 1)
+        let firstUp = try makeMouseEvent(
+            type: .leftMouseUp,
+            in: view,
+            at: NSPoint(x: 20, y: 15),
+            clickCount: 1
+        )
+        let doubleClick = try makeLeftMouseDownEvent(in: view, at: NSPoint(x: 20, y: 15), clickCount: 2)
+
+        view.mouseDown(with: firstDown)
+        view.mouseUp(with: firstUp)
+        view.mouseDown(with: doubleClick)
+
+        XCTAssertTrue(requestedNewTab, "A prior single click must not leave the drag zone unable to handle double-clicks")
+        XCTAssertFalse(dragged, "A plain click followed by a double-click should not start a window drag")
+    }
+
+    @MainActor
+    func testTabBarDragZoneDoubleClickRequestsNewTabInMinimalMode() throws {
+        let view = TabBarDragZoneView.DragNSView(frame: NSRect(x: 0, y: 0, width: 160, height: 30))
+        view.isMinimalMode = true
+        view.isFocusedPane = true
+
+        var requestedNewTab = false
+        var dragged = false
+        view.onDoubleClick = {
+            requestedNewTab = true
+            return true
+        }
+        view.performWindowDrag = { _ in
+            dragged = true
+            return true
+        }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 200, height: 60),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        defer { window.orderOut(nil) }
+        guard let contentView = window.contentView else {
+            XCTFail("Expected content view")
+            return
+        }
+
+        contentView.addSubview(view)
+        window.makeKeyAndOrderFront(nil)
+        let event = try makeLeftMouseDownEvent(in: view, at: NSPoint(x: 20, y: 15), clickCount: 2)
+        view.mouseDown(with: event)
+
+        XCTAssertTrue(requestedNewTab, "Minimal-mode drag zone double-click should request the new-tab action")
+        XCTAssertFalse(dragged, "Minimal-mode double-click should not start a window drag")
+    }
+
+    @MainActor
+    func testTabBarDragZoneSingleClickRequestsNewTabInStandardMode() throws {
+        let view = TabBarDragZoneView.DragNSView(frame: NSRect(x: 0, y: 0, width: 160, height: 30))
+        view.isMinimalMode = false
+        view.isFocusedPane = true
+
+        var newTabCount = 0
+        var dragged = false
+        view.onDoubleClick = {
+            newTabCount += 1
+            return true
+        }
+        view.performWindowDrag = { _ in
+            dragged = true
+            return true
+        }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 200, height: 60),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        defer { window.orderOut(nil) }
+        guard let contentView = window.contentView else {
+            XCTFail("Expected content view")
+            return
+        }
+
+        contentView.addSubview(view)
+        window.makeKeyAndOrderFront(nil)
+        let event = try makeLeftMouseDownEvent(in: view, at: NSPoint(x: 20, y: 15), clickCount: 1)
+        view.mouseDown(with: event)
+
+        XCTAssertEqual(newTabCount, 1, "Standard-mode drag zone single click should immediately request a new tab")
+        XCTAssertFalse(dragged, "Standard-mode drag zone single click should not begin a window drag")
+    }
+
+    @MainActor
+    func testTabBarDragZoneStandardModeDoubleClickCreatesOnlyOneTab() throws {
+        let view = TabBarDragZoneView.DragNSView(frame: NSRect(x: 0, y: 0, width: 160, height: 30))
+        view.isMinimalMode = false
+        view.isFocusedPane = true
+
+        var newTabCount = 0
+        view.onDoubleClick = {
+            newTabCount += 1
+            return true
+        }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 200, height: 60),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        defer { window.orderOut(nil) }
+        guard let contentView = window.contentView else {
+            XCTFail("Expected content view")
+            return
+        }
+
+        contentView.addSubview(view)
+        window.makeKeyAndOrderFront(nil)
+        let firstDown = try makeLeftMouseDownEvent(in: view, at: NSPoint(x: 20, y: 15), clickCount: 1)
+        let firstUp = try makeMouseEvent(
+            type: .leftMouseUp,
+            in: view,
+            at: NSPoint(x: 20, y: 15),
+            clickCount: 1
+        )
+        let secondDown = try makeLeftMouseDownEvent(in: view, at: NSPoint(x: 20, y: 15), clickCount: 2)
+
+        view.mouseDown(with: firstDown)
+        view.mouseUp(with: firstUp)
+        view.mouseDown(with: secondDown)
+
+        XCTAssertEqual(newTabCount, 1, "A standard-mode double-click must only create one tab; the clickCount=2 follow-up should be deduped")
+    }
+
+    @MainActor
     func testTabBarDragZoneKeepsFocusedPaneWindowDragInMinimalMode() throws {
         let view = TabBarDragZoneView.DragNSView(frame: NSRect(x: 0, y: 0, width: 160, height: 30))
         view.isMinimalMode = true
@@ -1199,11 +1622,18 @@ final class BonsplitTests: XCTestCase {
         contentView.addSubview(view)
         window.makeKeyAndOrderFront(nil)
         let event = try makeLeftMouseDownEvent(in: view, at: NSPoint(x: 20, y: 15), clickCount: 1)
+        let dragEvent = try makeMouseEvent(
+            type: .leftMouseDragged,
+            in: view,
+            at: NSPoint(x: 30, y: 15),
+            clickCount: 1
+        )
         view.mouseDown(with: event)
+        view.mouseDragged(with: dragEvent)
 
         XCTAssertFalse(focused, "Focused-pane drag zone should not bounce through first-click focus")
         XCTAssertTrue(dragged, "Focused-pane drag zone should continue to start window drags in minimal mode")
-        XCTAssertTrue(view.mouseDownCanMoveWindow, "Focused-pane drag zone should continue advertising window dragging to AppKit")
+        XCTAssertFalse(view.mouseDownCanMoveWindow, "Focused-pane drag zone must not advertise window dragging to AppKit or AppKit steals mouseUp and breaks new-tab double-clicks")
     }
 
     private func withShortcutHintDefaultsSuite(_ body: (UserDefaults) -> Void) {
@@ -1241,6 +1671,61 @@ final class BonsplitTests: XCTestCase {
         }
         for subview in root.subviews {
             if let match = firstDescendant(ofType: type, in: subview) {
+                return match
+            }
+        }
+        return nil
+    }
+
+    @MainActor
+    private func waitForDescendant<T: NSView>(
+        ofType type: T.Type,
+        in root: NSView,
+        containingWindowPoint point: NSPoint,
+        timeout: TimeInterval = 1.0,
+        where predicate: (T) -> Bool = { _ in true }
+    ) -> T? {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            root.layoutSubtreeIfNeeded()
+            if let match = firstDescendant(
+                ofType: type,
+                in: root,
+                containingWindowPoint: point,
+                where: predicate
+            ) {
+                return match
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        } while Date() < deadline
+        return firstDescendant(
+            ofType: type,
+            in: root,
+            containingWindowPoint: point,
+            where: predicate
+        )
+    }
+
+    @MainActor
+    private func firstDescendant<T: NSView>(
+        ofType type: T.Type,
+        in root: NSView,
+        containingWindowPoint point: NSPoint,
+        where predicate: (T) -> Bool = { _ in true }
+    ) -> T? {
+        if let match = root as? T {
+            let frameInWindow = root.convert(root.bounds, to: nil)
+            if frameInWindow.contains(point), predicate(match) {
+                return match
+            }
+        }
+        for subview in root.subviews {
+            if let match = firstDescendant(
+                ofType: type,
+                in: subview,
+                containingWindowPoint: point,
+                where: predicate
+            ) {
                 return match
             }
         }
@@ -1307,12 +1792,22 @@ final class BonsplitTests: XCTestCase {
         at point: NSPoint,
         clickCount: Int
     ) throws -> NSEvent {
+        try makeMouseEvent(type: .leftMouseDown, in: view, at: point, clickCount: clickCount)
+    }
+
+    @MainActor
+    private func makeMouseEvent(
+        type: NSEvent.EventType,
+        in view: NSView,
+        at point: NSPoint,
+        clickCount: Int
+    ) throws -> NSEvent {
         guard let window = view.window else {
             throw NSError(domain: "BonsplitTests", code: 1, userInfo: [NSLocalizedDescriptionKey: "Missing window"])
         }
         let pointInWindow = view.convert(point, to: nil)
         guard let event = NSEvent.mouseEvent(
-            with: .leftMouseDown,
+            with: type,
             location: pointInWindow,
             modifierFlags: [],
             timestamp: ProcessInfo.processInfo.systemUptime,

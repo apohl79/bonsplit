@@ -159,6 +159,11 @@ public final class BonsplitController {
         delegate?.splitTabBar(self, didRequestNewTab: kind, inPane: pane)
     }
 
+    /// Request the delegate to handle a host-defined tab bar action.
+    public func requestCustomAction(_ identifier: String, inPane pane: PaneID) {
+        delegate?.splitTabBar(self, didRequestCustomAction: identifier, inPane: pane)
+    }
+
     /// Request the delegate to handle a tab context-menu action.
     public func requestTabContextAction(_ action: TabContextAction, for tabId: TabID, inPane pane: PaneID) {
         guard let tab = tab(tabId) else { return }
