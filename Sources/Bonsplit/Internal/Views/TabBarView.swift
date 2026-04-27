@@ -1257,7 +1257,7 @@ private struct TabBarDragAndHoverView: NSViewRepresentable {
         private func installLocalMouseMonitorIfNeeded() {
             guard localMouseMonitor == nil else { return }
             localMouseMonitor = NSEvent.addLocalMonitorForEvents(
-                matching: [.mouseMoved, .leftMouseDown, .leftMouseDragged]
+                matching: [.mouseMoved, .mouseEntered, .mouseExited, .leftMouseDown, .leftMouseDragged]
             ) { [weak self] event in
                 self?.updateHover(from: event)
                 return event
@@ -1272,12 +1272,17 @@ private struct TabBarDragAndHoverView: NSViewRepresentable {
         }
 
         private func updateHover(from event: NSEvent) {
-            guard let window, event.window === window else {
+            updateHoverFromCurrentMouseLocation()
+        }
+
+        private func updateHoverFromCurrentMouseLocation() {
+            guard let window else {
                 emitHoverChanged(false)
                 return
             }
-            let point = convert(event.locationInWindow, from: nil)
-            emitHoverChanged(bounds.contains(point))
+            let rectInWindow = convert(bounds, to: nil)
+            let rectInScreen = window.convertToScreen(rectInWindow)
+            emitHoverChanged(rectInScreen.contains(NSEvent.mouseLocation))
         }
 
         private func emitHoverChanged(_ newValue: Bool) {
