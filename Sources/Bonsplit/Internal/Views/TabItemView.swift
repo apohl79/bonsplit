@@ -414,13 +414,15 @@ struct TabItemView: View {
                 .disabled(!contextMenuState.canMarkAsUnread)
         }
 
-        Divider()
+        if contextMenuState.canCopyIdentifiers {
+            Divider()
 
-        localizedContextButton(
-            "command.copyWorkspaceAndSurfaceIDs.title",
-            defaultValue: "Copy Workspace and Surface IDs",
-            action: .copyIdentifiers
-        )
+            localizedContextButton(
+                "command.copyWorkspaceAndSurfaceIDs.title",
+                defaultValue: "Copy Workspace and Surface IDs",
+                action: .copyIdentifiers
+            )
+        }
     }
 
     @ViewBuilder

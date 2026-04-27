@@ -49,6 +49,12 @@ public final class BonsplitController {
         didSet { internalController.tabShortcutHintsEnabled = tabShortcutHintsEnabled }
     }
 
+    /// Whether tab context menus should expose the host-defined identifier copy action.
+    ///
+    /// Generic Bonsplit hosts often do not have workspace/surface identifiers, so this
+    /// stays opt-in.
+    public var showsCopyIdentifiersContextMenuItem: Bool = false
+
     /// Handler for file/URL drops from external apps (e.g., Finder).
     /// Called when files are dropped onto a pane's content area.
     /// Return `true` if the drop was handled.
