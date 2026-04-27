@@ -1169,7 +1169,8 @@ private struct TabBarDragAndHoverView: NSViewRepresentable {
             super.viewDidMoveToWindow()
             BonsplitTabBarHitRegionRegistry.unregister(self)
             removeWindowObservers()
-            if window != nil {
+            if let window {
+                window.acceptsMouseMovedEvents = true
                 BonsplitTabBarHitRegionRegistry.register(self)
                 installWindowObservers()
                 installLocalMouseMonitorIfNeeded()
