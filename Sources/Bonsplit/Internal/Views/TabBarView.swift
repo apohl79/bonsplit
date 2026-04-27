@@ -57,6 +57,14 @@ private struct SelectedTabFramePreferenceKey: PreferenceKey {
     }
 }
 
+private struct TabFramePreferenceKey: PreferenceKey {
+    static let defaultValue: [UUID: CGRect] = [:]
+
+    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    }
+}
+
 @MainActor
 private final class TabBarScrollViewBridge: ObservableObject {
     private struct ScrollMetrics {
@@ -310,6 +318,7 @@ struct TabBarView: View {
     @State private var contentWidth: CGFloat = 0
     @State private var containerWidth: CGFloat = 0
     @State private var selectedTabFrameInBar: CGRect?
+    @State private var tabFramesInBar: [UUID: CGRect] = [:]
     @StateObject private var controlKeyMonitor = TabControlShortcutKeyMonitor()
     @StateObject private var scrollViewBridge = TabBarScrollViewBridge()
 
@@ -564,6 +573,16 @@ struct TabBarView: View {
         .overlay(
             TabBarHoverTrackingView { isHoveringTabBar = $0 }
         )
+        .overlay(
+            TabBarManualReorderTrackingView(
+                pane: pane,
+                bonsplitController: controller,
+                splitViewController: splitViewController,
+                tabFrames: tabFramesInBar,
+                dropTargetIndex: $dropTargetIndex,
+                dropLifecycle: $dropLifecycle
+            )
+        )
         .background(
             TabBarHostWindowReader { window in
                 controlKeyMonitor.setHostWindow(window)
@@ -589,6 +608,9 @@ struct TabBarView: View {
         }
         .onPreferenceChange(SelectedTabFramePreferenceKey.self) { frame in
             selectedTabFrameInBar = frame
+        }
+        .onPreferenceChange(TabFramePreferenceKey.self) { frames in
+            tabFramesInBar = frames
         }
         .onDisappear {
             controlKeyMonitor.stop()
@@ -644,12 +666,16 @@ struct TabBarView: View {
         )
         .background(
             GeometryReader { geometry in
-                Color.clear.preference(
-                    key: SelectedTabFramePreferenceKey.self,
-                    value: pane.selectedTabId == tab.id
-                        ? geometry.frame(in: .named("tabBar"))
-                        : nil
-                )
+                let frame = geometry.frame(in: .named("tabBar"))
+                Color.clear
+                    .preference(
+                        key: SelectedTabFramePreferenceKey.self,
+                        value: pane.selectedTabId == tab.id ? frame : nil
+                    )
+                    .preference(
+                        key: TabFramePreferenceKey.self,
+                        value: [tab.id: frame]
+                    )
             }
         )
         .onDrag {
@@ -1255,6 +1281,265 @@ private struct TabBarHoverTrackingView: NSViewRepresentable {
             guard isHovering != newValue else { return }
             isHovering = newValue
             onHoverChanged?(newValue)
+        }
+    }
+}
+
+private struct TabBarManualReorderTrackingView: NSViewRepresentable {
+    let pane: PaneState
+    let bonsplitController: BonsplitController
+    let splitViewController: SplitViewController
+    let tabFrames: [UUID: CGRect]
+    @Binding var dropTargetIndex: Int?
+    @Binding var dropLifecycle: TabDropLifecycle
+
+    func makeNSView(context: Context) -> ManualReorderNSView {
+        let view = ManualReorderNSView()
+        update(view)
+        return view
+    }
+
+    func updateNSView(_ nsView: ManualReorderNSView, context: Context) {
+        update(nsView)
+    }
+
+    private func update(_ view: ManualReorderNSView) {
+        view.pane = pane
+        view.bonsplitController = bonsplitController
+        view.splitViewController = splitViewController
+        view.tabFrames = tabFrames
+        view.onDropStateChanged = { targetIndex, lifecycle in
+            dropTargetIndex = targetIndex
+            dropLifecycle = lifecycle
+        }
+    }
+
+    final class ManualReorderNSView: NSView {
+        weak var pane: PaneState?
+        weak var bonsplitController: BonsplitController?
+        weak var splitViewController: SplitViewController?
+        var tabFrames: [UUID: CGRect] = [:]
+        var onDropStateChanged: ((Int?, TabDropLifecycle) -> Void)?
+
+        private var localMouseMonitor: Any?
+        private var session: ManualDragSession?
+
+        private static let dragStartDistanceSquared: CGFloat = 16
+        private static let trailingDropSlop: CGFloat = 30
+
+        override var mouseDownCanMoveWindow: Bool { false }
+
+        deinit {
+            removeLocalMouseMonitor()
+        }
+
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            nil
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if window != nil {
+                installLocalMouseMonitorIfNeeded()
+            } else {
+                removeLocalMouseMonitor()
+                clearManualDrag()
+            }
+        }
+
+        private func installLocalMouseMonitorIfNeeded() {
+            guard localMouseMonitor == nil else { return }
+            localMouseMonitor = NSEvent.addLocalMonitorForEvents(
+                matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]
+            ) { [weak self] event in
+                self?.handle(event)
+                return event
+            }
+        }
+
+        private func removeLocalMouseMonitor() {
+            if let localMouseMonitor {
+                NSEvent.removeMonitor(localMouseMonitor)
+                self.localMouseMonitor = nil
+            }
+        }
+
+        private func handle(_ event: NSEvent) {
+            guard let window else {
+                clearManualDrag()
+                return
+            }
+            guard event.window == nil || event.window === window else {
+                if session != nil {
+                    clearManualDrag()
+                }
+                return
+            }
+
+            let windowPoint = event.window === window
+                ? event.locationInWindow
+                : window.mouseLocationOutsideOfEventStream
+            let point = convert(windowPoint, from: nil)
+
+            switch event.type {
+            case .leftMouseDown:
+                beginTrackingIfNeeded(at: point)
+            case .leftMouseDragged:
+                updateTracking(at: point)
+            case .leftMouseUp:
+                finishTracking()
+            default:
+                break
+            }
+        }
+
+        private func beginTrackingIfNeeded(at point: NSPoint) {
+            guard bounds.contains(point),
+                  let pane,
+                  let splitViewController,
+                  splitViewController.isInteractive,
+                  let source = tab(at: point, in: pane) else {
+                clearManualDrag()
+                return
+            }
+
+            session = ManualDragSession(
+                sourceTab: source,
+                sourcePaneId: pane.id,
+                startPoint: point,
+                currentTargetIndex: nil,
+                didStartDrag: false
+            )
+        }
+
+        private func updateTracking(at point: NSPoint) {
+            guard var session else { return }
+
+            let dx = point.x - session.startPoint.x
+            let dy = point.y - session.startPoint.y
+            if !session.didStartDrag {
+                guard dx * dx + dy * dy >= Self.dragStartDistanceSquared else { return }
+                beginManualDrag(for: session)
+                session.didStartDrag = true
+            }
+
+            let targetIndex = dropTargetIndex(at: point)
+            session.currentTargetIndex = targetIndex
+            self.session = session
+
+            if let targetIndex,
+               !shouldSuppressIndicator(sourceTabId: session.sourceTab.id, targetIndex: targetIndex) {
+                onDropStateChanged?(targetIndex, .hovering)
+            } else {
+                onDropStateChanged?(nil, .idle)
+            }
+        }
+
+        private func finishTracking() {
+            guard let session else {
+                clearManualDrag()
+                return
+            }
+
+            defer {
+                clearControllerDragStateIfNeeded(sourceTabId: session.sourceTab.id)
+                clearManualDrag()
+            }
+
+            guard session.didStartDrag,
+                  let pane,
+                  let bonsplitController,
+                  let targetIndex = session.currentTargetIndex,
+                  !shouldSuppressIndicator(sourceTabId: session.sourceTab.id, targetIndex: targetIndex),
+                  let currentSourceIndex = pane.tabs.firstIndex(where: { $0.id == session.sourceTab.id }) else {
+                return
+            }
+
+            withTransaction(Transaction(animation: nil)) {
+                pane.moveTab(from: currentSourceIndex, to: targetIndex)
+                bonsplitController.focusPane(pane.id)
+            }
+        }
+
+        private func beginManualDrag(for session: ManualDragSession) {
+            guard let splitViewController else { return }
+#if DEBUG
+            dlog(
+                "tab.manualDragStart pane=\(session.sourcePaneId.id.uuidString.prefix(5)) " +
+                    "tab=\(session.sourceTab.id.uuidString.prefix(5)) title=\"\(session.sourceTab.title)\""
+            )
+#endif
+            splitViewController.dragGeneration += 1
+            splitViewController.draggingTab = session.sourceTab
+            splitViewController.dragSourcePaneId = session.sourcePaneId
+            splitViewController.activeDragTab = session.sourceTab
+            splitViewController.activeDragSourcePaneId = session.sourcePaneId
+        }
+
+        private func clearManualDrag() {
+            session = nil
+            onDropStateChanged?(nil, .idle)
+        }
+
+        private func clearControllerDragStateIfNeeded(sourceTabId: UUID) {
+            guard let splitViewController else { return }
+            if splitViewController.draggingTab?.id == sourceTabId {
+                splitViewController.draggingTab = nil
+                splitViewController.dragSourcePaneId = nil
+            }
+            if splitViewController.activeDragTab?.id == sourceTabId {
+                splitViewController.activeDragTab = nil
+                splitViewController.activeDragSourcePaneId = nil
+            }
+        }
+
+        private func tab(at point: NSPoint, in pane: PaneState) -> TabItem? {
+            for tab in pane.tabs {
+                guard let frame = tabFrames[tab.id] else { continue }
+                if point.x >= frame.minX, point.x <= frame.maxX {
+                    return tab
+                }
+            }
+            return nil
+        }
+
+        private func dropTargetIndex(at point: NSPoint) -> Int? {
+            guard bounds.insetBy(dx: 0, dy: -4).contains(point),
+                  let pane,
+                  !pane.tabs.isEmpty else {
+                return nil
+            }
+
+            var lastFrame: CGRect?
+            for (index, tab) in pane.tabs.enumerated() {
+                guard let frame = tabFrames[tab.id] else { continue }
+                lastFrame = frame
+                if point.x < frame.midX {
+                    return index
+                }
+            }
+
+            if let lastFrame,
+               point.x <= lastFrame.maxX + Self.trailingDropSlop {
+                return pane.tabs.count
+            }
+            return nil
+        }
+
+        private func shouldSuppressIndicator(sourceTabId: UUID, targetIndex: Int) -> Bool {
+            guard let pane,
+                  let sourceIndex = pane.tabs.firstIndex(where: { $0.id == sourceTabId }) else {
+                return false
+            }
+            return targetIndex == sourceIndex || targetIndex == sourceIndex + 1
+        }
+
+        private struct ManualDragSession {
+            let sourceTab: TabItem
+            let sourcePaneId: PaneID
+            let startPoint: NSPoint
+            var currentTargetIndex: Int?
+            var didStartDrag: Bool
         }
     }
 }
