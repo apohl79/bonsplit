@@ -360,11 +360,11 @@ struct TabBarView: View {
         if let debugStyle = BonsplitConfiguration.Appearance.SplitButtonBackdropStyle(rawValue: fadeColorStyle) {
             return .init(
                 style: debugStyle,
-                fadeWidth: 112,
-                solidWidth: 6,
-                fadeRampStartFraction: 0.72,
+                fadeWidth: 136,
+                solidWidth: 2,
+                fadeRampStartFraction: 0.80,
                 leadingOpacity: 0,
-                trailingOpacity: 1,
+                trailingOpacity: 0.80,
                 masksTabContent: false
             )
         }
