@@ -668,6 +668,7 @@ struct TabBarView: View {
         .overlay(alignment: .leading) {
             if dropTargetIndex == index {
                 dropIndicator
+                    .accessibilityIdentifier("paneTabBar.dropIndicator")
                     .saturation(tabBarSaturation)
             }
         }
@@ -813,6 +814,7 @@ struct TabBarView: View {
         .overlay(alignment: .leading) {
             if dropTargetIndex == pane.tabs.count {
                 dropIndicator
+                    .accessibilityIdentifier("paneTabBar.dropIndicator")
                     .saturation(tabBarSaturation)
             }
         }
@@ -843,11 +845,27 @@ struct TabBarView: View {
                     splitActionButtonIcon(button.icon)
                 }
                 .buttonStyle(SplitActionButtonStyle(appearance: appearance))
+                .accessibilityIdentifier(splitActionButtonAccessibilityIdentifier(button))
                 .safeHelp(splitActionButtonTooltip(button, tooltips: tooltips))
             }
         }
         .padding(.leading, TabBarStyling.splitButtonsLeadingPadding)
         .padding(.trailing, TabBarStyling.splitButtonsTrailingPadding)
+    }
+
+    private func splitActionButtonAccessibilityIdentifier(_ button: BonsplitConfiguration.SplitActionButton) -> String {
+        switch button.action {
+        case .newTerminal:
+            return "paneTabBarControl.newTerminal"
+        case .newBrowser:
+            return "paneTabBarControl.newBrowser"
+        case .splitRight:
+            return "paneTabBarControl.splitRight"
+        case .splitDown:
+            return "paneTabBarControl.splitDown"
+        case .custom(let identifier):
+            return "paneTabBarControl.custom.\(identifier)"
+        }
     }
 
     @ViewBuilder
@@ -1150,15 +1168,7 @@ private struct TabBarHoverTrackingView: NSViewRepresentable {
             removeLocalMouseMonitor()
         }
 
-        override func hitTest(_ point: NSPoint) -> NSView? {
-            guard bounds.contains(point) else { return nil }
-            switch NSApp.currentEvent?.type {
-            case .mouseMoved, .mouseEntered, .mouseExited, .cursorUpdate:
-                return self
-            default:
-                return nil
-            }
-        }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
@@ -1187,15 +1197,15 @@ private struct TabBarHoverTrackingView: NSViewRepresentable {
         }
 
         override func mouseEntered(with event: NSEvent) {
-            updateHoverFromCurrentMouseLocation()
+            updateHover(from: event)
         }
 
         override func mouseExited(with event: NSEvent) {
-            updateHoverFromCurrentMouseLocation()
+            updateHover(from: event)
         }
 
         override func mouseMoved(with event: NSEvent) {
-            updateHoverFromCurrentMouseLocation()
+            updateHover(from: event)
         }
 
         private func installLocalMouseMonitorIfNeeded() {
@@ -1203,7 +1213,7 @@ private struct TabBarHoverTrackingView: NSViewRepresentable {
             localMouseMonitor = NSEvent.addLocalMonitorForEvents(
                 matching: [.mouseMoved, .mouseEntered, .mouseExited, .leftMouseDown, .leftMouseDragged]
             ) { [weak self] event in
-                self?.updateHoverFromCurrentMouseLocation()
+                self?.updateHover(from: event)
                 return event
             }
         }
@@ -1215,14 +1225,30 @@ private struct TabBarHoverTrackingView: NSViewRepresentable {
             }
         }
 
+        private func updateHover(from event: NSEvent) {
+            guard let window else {
+                emitHoverChanged(false)
+                return
+            }
+            guard event.window == nil || event.window === window else {
+                emitHoverChanged(false)
+                return
+            }
+
+            let pointInWindow = event.window === window
+                ? event.locationInWindow
+                : window.mouseLocationOutsideOfEventStream
+            let pointInView = convert(pointInWindow, from: nil)
+            emitHoverChanged(bounds.insetBy(dx: -1, dy: -1).contains(pointInView))
+        }
+
         private func updateHoverFromCurrentMouseLocation() {
             guard let window else {
                 emitHoverChanged(false)
                 return
             }
-            let rectInWindow = convert(bounds, to: nil)
-            let rectInScreen = window.convertToScreen(rectInWindow)
-            emitHoverChanged(rectInScreen.contains(NSEvent.mouseLocation))
+            let pointInView = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+            emitHoverChanged(bounds.insetBy(dx: -1, dy: -1).contains(pointInView))
         }
 
         private func emitHoverChanged(_ newValue: Bool) {
@@ -1381,17 +1407,20 @@ private struct TabBarDragAndHoverView: NSViewRepresentable {
         }
 
         private func updateHover(from event: NSEvent) {
-            updateHoverFromCurrentMouseLocation()
-        }
-
-        private func updateHoverFromCurrentMouseLocation() {
             guard let window else {
                 emitHoverChanged(false)
                 return
             }
-            let rectInWindow = convert(bounds, to: nil)
-            let rectInScreen = window.convertToScreen(rectInWindow)
-            emitHoverChanged(rectInScreen.contains(NSEvent.mouseLocation))
+            guard event.window == nil || event.window === window else {
+                emitHoverChanged(false)
+                return
+            }
+
+            let pointInWindow = event.window === window
+                ? event.locationInWindow
+                : window.mouseLocationOutsideOfEventStream
+            let pointInView = convert(pointInWindow, from: nil)
+            emitHoverChanged(bounds.insetBy(dx: -1, dy: -1).contains(pointInView))
         }
 
         private func emitHoverChanged(_ newValue: Bool) {
