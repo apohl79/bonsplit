@@ -800,6 +800,42 @@ final class BonsplitTests: XCTestCase {
         XCTAssertGreaterThan(alpha, 0.6)
     }
 
+    func testSharedBackdropUsesSemanticBackgroundForTextAndHover() {
+        let appearance = BonsplitConfiguration.Appearance(
+            chromeColors: .init(
+                backgroundHex: "#272822",
+                tabBarBackgroundHex: "#00000000",
+                splitButtonBackdropHex: "#00000000",
+                paneBackgroundHex: "#00000000"
+            ),
+            usesSharedBackdrop: true
+        )
+        let text = TabBarColors.nsColorInactiveText(for: appearance).usingColorSpace(.sRGB)!
+        let hover = NSColor(TabBarColors.hoveredTabBackground(for: appearance)).usingColorSpace(.sRGB)!
+
+        var textRed: CGFloat = 0
+        var textGreen: CGFloat = 0
+        var textBlue: CGFloat = 0
+        var textAlpha: CGFloat = 0
+        text.getRed(&textRed, green: &textGreen, blue: &textBlue, alpha: &textAlpha)
+
+        var hoverRed: CGFloat = 0
+        var hoverGreen: CGFloat = 0
+        var hoverBlue: CGFloat = 0
+        var hoverAlpha: CGFloat = 0
+        hover.getRed(&hoverRed, green: &hoverGreen, blue: &hoverBlue, alpha: &hoverAlpha)
+
+        XCTAssertGreaterThan(textRed, 0.5)
+        XCTAssertGreaterThan(textGreen, 0.5)
+        XCTAssertGreaterThan(textBlue, 0.5)
+        XCTAssertGreaterThan(textAlpha, 0.6)
+        XCTAssertGreaterThan(hoverRed, 0.9)
+        XCTAssertGreaterThan(hoverGreen, 0.9)
+        XCTAssertGreaterThan(hoverBlue, 0.9)
+        XCTAssertGreaterThan(hoverAlpha, 0.04)
+        XCTAssertLessThan(hoverAlpha, 0.12)
+    }
+
     func testSplitActionPressedStateUsesHigherContrast() {
         let appearance = BonsplitConfiguration.Appearance(
             chromeColors: .init(backgroundHex: "#272822")
