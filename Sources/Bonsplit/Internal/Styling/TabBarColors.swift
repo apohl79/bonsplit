@@ -17,6 +17,33 @@ enum TabBarColors {
         return NSColor(bonsplitHex: value)
     }
 
+    private static func paneBackgroundColor(
+        for appearance: BonsplitConfiguration.Appearance
+    ) -> NSColor? {
+        guard let value = appearance.chromeColors.paneBackgroundHex else {
+            return chromeBackgroundColor(for: appearance)
+        }
+        return NSColor(bonsplitHex: value)
+    }
+
+    private static func tabBarBackgroundColor(
+        for appearance: BonsplitConfiguration.Appearance
+    ) -> NSColor? {
+        guard let value = appearance.chromeColors.tabBarBackgroundHex else {
+            return chromeBackgroundColor(for: appearance)
+        }
+        return NSColor(bonsplitHex: value)
+    }
+
+    private static func splitButtonBackdropColor(
+        for appearance: BonsplitConfiguration.Appearance
+    ) -> NSColor? {
+        guard let value = appearance.chromeColors.splitButtonBackdropHex else {
+            return tabBarBackgroundColor(for: appearance)
+        }
+        return NSColor(bonsplitHex: value)
+    }
+
     private static func chromeBorderColor(
         for appearance: BonsplitConfiguration.Appearance
     ) -> NSColor? {
@@ -31,11 +58,29 @@ enum TabBarColors {
         chromeBackgroundColor(for: appearance) ?? fallbackColor
     }
 
+    private static func precompositedPaneBackground(
+        for appearance: BonsplitConfiguration.Appearance,
+        focused: Bool
+    ) -> NSColor {
+        let chrome = nsColorPaneBackground(for: appearance)
+        let windowBackground = NSColor.windowBackgroundColor
+        guard let foreground = chrome.usingColorSpace(.sRGB),
+              let background = windowBackground.usingColorSpace(.sRGB) else {
+            return chrome.withAlphaComponent(1.0)
+        }
+        let alpha = focused ? foreground.alphaComponent : foreground.alphaComponent * 0.95
+        let oneMinusAlpha = 1.0 - alpha
+        let red = foreground.redComponent * alpha + background.redComponent * oneMinusAlpha
+        let green = foreground.greenComponent * alpha + background.greenComponent * oneMinusAlpha
+        let blue = foreground.blueComponent * alpha + background.blueComponent * oneMinusAlpha
+        return NSColor(red: red, green: green, blue: blue, alpha: 1.0)
+    }
+
     private static func effectiveTextColor(
         for appearance: BonsplitConfiguration.Appearance,
         secondary: Bool
     ) -> NSColor {
-        guard let custom = chromeBackgroundColor(for: appearance) else {
+        guard let custom = tabBarBackgroundColor(for: appearance) else {
             return secondary ? .secondaryLabelColor : .labelColor
         }
 
@@ -49,11 +94,11 @@ enum TabBarColors {
     }
 
     static func paneBackground(for appearance: BonsplitConfiguration.Appearance) -> Color {
-        Color(nsColor: effectiveBackgroundColor(for: appearance, fallback: .textBackgroundColor))
+        Color(nsColor: paneBackgroundColor(for: appearance) ?? .textBackgroundColor)
     }
 
     static func nsColorPaneBackground(for appearance: BonsplitConfiguration.Appearance) -> NSColor {
-        effectiveBackgroundColor(for: appearance, fallback: .textBackgroundColor)
+        paneBackgroundColor(for: appearance) ?? .textBackgroundColor
     }
 
     // MARK: - Tab Bar Background
@@ -63,7 +108,33 @@ enum TabBarColors {
     }
 
     static func barBackground(for appearance: BonsplitConfiguration.Appearance) -> Color {
-        Color(nsColor: effectiveBackgroundColor(for: appearance, fallback: .windowBackgroundColor))
+        Color(nsColor: nsColorBarBackground(for: appearance))
+    }
+
+    static func nsColorBarBackground(for appearance: BonsplitConfiguration.Appearance) -> NSColor {
+        tabBarBackgroundColor(for: appearance)
+            ?? effectiveBackgroundColor(for: appearance, fallback: .windowBackgroundColor)
+    }
+
+    static func nsColorChromeBackground(for appearance: BonsplitConfiguration.Appearance) -> NSColor {
+        effectiveBackgroundColor(for: appearance, fallback: .windowBackgroundColor)
+    }
+
+    static func nsColorSplitButtonBackdropSurface(for appearance: BonsplitConfiguration.Appearance) -> NSColor {
+        splitButtonBackdropColor(for: appearance) ?? nsColorBarBackground(for: appearance)
+    }
+
+    static func nsColorSplitButtonBackdrop(
+        for appearance: BonsplitConfiguration.Appearance,
+        focused: Bool = true
+    ) -> NSColor {
+        precompositedPaneBackground(for: appearance, focused: focused)
+    }
+
+    static func shouldPaintSplitButtonBackdrop(for appearance: BonsplitConfiguration.Appearance) -> Bool {
+        splitButtonBackdropColor(for: appearance) != nil
+            || tabBarBackgroundColor(for: appearance) != nil
+            || chromeBackgroundColor(for: appearance) != nil
     }
 
     static var barMaterial: Material {
@@ -77,7 +148,7 @@ enum TabBarColors {
     }
 
     static func activeTabBackground(for appearance: BonsplitConfiguration.Appearance) -> Color {
-        guard let custom = chromeBackgroundColor(for: appearance) else {
+        guard let custom = tabBarBackgroundColor(for: appearance) else {
             return activeTabBackground
         }
         let adjusted = custom.isBonsplitLightColor
@@ -91,7 +162,7 @@ enum TabBarColors {
     }
 
     static func hoveredTabBackground(for appearance: BonsplitConfiguration.Appearance) -> Color {
-        guard let custom = chromeBackgroundColor(for: appearance) else {
+        guard let custom = tabBarBackgroundColor(for: appearance) else {
             return hoveredTabBackground
         }
         let adjusted = custom.isBonsplitLightColor
@@ -156,7 +227,7 @@ enum TabBarColors {
             return explicit
         }
 
-        guard let custom = chromeBackgroundColor(for: appearance) else {
+        guard let custom = tabBarBackgroundColor(for: appearance) else {
             return .separatorColor
         }
         let alpha: CGFloat = custom.isBonsplitLightColor ? 0.26 : 0.36

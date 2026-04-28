@@ -413,6 +413,14 @@ struct TabItemView: View {
             contextButton("Mark Tab as Unread", action: .markAsUnread)
                 .disabled(!contextMenuState.canMarkAsUnread)
         }
+
+        Divider()
+
+        localizedContextButton(
+            "command.copyIdentifiers.title",
+            defaultValue: "Copy IDs",
+            action: .copyIdentifiers
+        )
     }
 
     @ViewBuilder

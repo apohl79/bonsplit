@@ -335,10 +335,69 @@ extension BonsplitConfiguration {
     }
 
     public struct Appearance: Sendable {
+        public enum SplitButtonBackdropStyle: Int, CaseIterable, Sendable {
+            case precompositedPaneBackground = 0
+            case opaquePaneBackground = 1
+            case opaqueBarBackground = 2
+            case windowBackground = 3
+            case controlBackground = 4
+            case precompositedBarBackground = 5
+            case translucentChrome = 6
+            case hidden = 7
+        }
+
+        public struct SplitButtonBackdropEffect: Sendable {
+            public var style: SplitButtonBackdropStyle
+            public var fadeWidth: CGFloat
+            public var contentFadeWidth: CGFloat
+            public var solidWidth: CGFloat
+            public var fadeRampStartFraction: CGFloat
+            public var leadingOpacity: CGFloat
+            public var trailingOpacity: CGFloat
+            public var contentOcclusionFraction: CGFloat
+            public var masksTabContent: Bool
+
+            public init(
+                style: SplitButtonBackdropStyle = .translucentChrome,
+                fadeWidth: CGFloat = 136,
+                contentFadeWidth: CGFloat = 42,
+                solidWidth: CGFloat = 2,
+                fadeRampStartFraction: CGFloat = 0.80,
+                leadingOpacity: CGFloat = 0,
+                trailingOpacity: CGFloat = 0.80,
+                contentOcclusionFraction: CGFloat = 1.0,
+                masksTabContent: Bool = true
+            ) {
+                self.style = style
+                self.fadeWidth = max(0, fadeWidth)
+                self.contentFadeWidth = max(0, contentFadeWidth)
+                self.solidWidth = max(0, solidWidth)
+                self.fadeRampStartFraction = min(max(0, fadeRampStartFraction), 0.95)
+                self.leadingOpacity = min(max(0, leadingOpacity), 1)
+                self.trailingOpacity = min(max(0, trailingOpacity), 1)
+                self.contentOcclusionFraction = min(max(0, contentOcclusionFraction), 1)
+                self.masksTabContent = masksTabContent
+            }
+
+            public static let `default` = SplitButtonBackdropEffect()
+        }
+
         public struct ChromeColors: Sendable {
-            /// Optional hex color (`#RRGGBB` or `#RRGGBBAA`) for tab/pane chrome backgrounds.
+            /// Optional hex color (`#RRGGBB` or `#RRGGBBAA`) for general chrome backgrounds.
             /// When unset, Bonsplit uses native system colors.
             public var backgroundHex: String?
+
+            /// Optional hex color (`#RRGGBB` or `#RRGGBBAA`) for the tab bar's resolved surface.
+            /// When unset, Bonsplit falls back to `backgroundHex`.
+            public var tabBarBackgroundHex: String?
+
+            /// Optional hex color (`#RRGGBB` or `#RRGGBBAA`) for the split action button backdrop.
+            /// When unset, Bonsplit falls back to `tabBarBackgroundHex`, then `backgroundHex`.
+            public var splitButtonBackdropHex: String?
+
+            /// Optional hex color (`#RRGGBB` or `#RRGGBBAA`) for the split pane background.
+            /// When unset, Bonsplit falls back to `backgroundHex`.
+            public var paneBackgroundHex: String?
 
             /// Optional hex color (`#RRGGBB` or `#RRGGBBAA`) for separators/dividers.
             /// When unset, Bonsplit derives separators from the chrome background.
@@ -346,9 +405,15 @@ extension BonsplitConfiguration {
 
             public init(
                 backgroundHex: String? = nil,
+                tabBarBackgroundHex: String? = nil,
+                splitButtonBackdropHex: String? = nil,
+                paneBackgroundHex: String? = nil,
                 borderHex: String? = nil
             ) {
                 self.backgroundHex = backgroundHex
+                self.tabBarBackgroundHex = tabBarBackgroundHex
+                self.splitButtonBackdropHex = splitButtonBackdropHex
+                self.paneBackgroundHex = paneBackgroundHex
                 self.borderHex = borderHex
             }
         }
@@ -393,6 +458,15 @@ extension BonsplitConfiguration {
 
         /// When true, split buttons are only visible on hover
         public var splitButtonsOnHover: Bool
+
+        /// Optional explicit backdrop style for the tab bar's right-side action buttons.
+        /// When unset, Bonsplit uses the host app's debug override if one is configured.
+        public var splitButtonBackdropStyle: SplitButtonBackdropStyle?
+
+        /// Optional explicit backdrop effect for the tab bar's right-side action buttons.
+        /// This controls both the color strategy and how tab content is faded or clipped
+        /// underneath the action-button region.
+        public var splitButtonBackdropEffect: SplitButtonBackdropEffect?
 
         /// Extra leading inset for the tab bar (e.g. for traffic light buttons when sidebar is collapsed)
         public var tabBarLeadingInset: CGFloat
@@ -445,6 +519,8 @@ extension BonsplitConfiguration {
             showSplitButtons: Bool = true,
             splitButtons: [SplitActionButton] = SplitActionButton.defaults,
             splitButtonsOnHover: Bool = false,
+            splitButtonBackdropStyle: SplitButtonBackdropStyle? = nil,
+            splitButtonBackdropEffect: SplitButtonBackdropEffect? = nil,
             tabBarLeadingInset: CGFloat = 0,
             splitButtonTooltips: SplitButtonTooltips = .default,
             animationDuration: Double = 0.15,
@@ -461,6 +537,8 @@ extension BonsplitConfiguration {
             self.showSplitButtons = showSplitButtons
             self.splitButtons = Self.uniqueSplitButtons(splitButtons)
             self.splitButtonsOnHover = splitButtonsOnHover
+            self.splitButtonBackdropStyle = splitButtonBackdropStyle
+            self.splitButtonBackdropEffect = splitButtonBackdropEffect
             self.tabBarLeadingInset = tabBarLeadingInset
             self.splitButtonTooltips = splitButtonTooltips
             self.animationDuration = animationDuration
