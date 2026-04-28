@@ -346,6 +346,10 @@ struct TabBarView: View {
         controller.configuration.appearance
     }
 
+    private var tabBarHeight: CGFloat {
+        max(1, appearance.tabBarHeight)
+    }
+
     private var visibleSplitButtons: [BonsplitConfiguration.SplitActionButton] {
         guard showSplitButtons else { return [] }
         return appearance.splitButtons
@@ -494,7 +498,7 @@ struct TabBarView: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: TabBarMetrics.tabSpacing) {
                             Color.clear
-                                .frame(width: 0, height: TabBarMetrics.tabHeight)
+                                .frame(width: 0, height: tabBarHeight)
                                 .id(leadingScrollAnchorId)
 
                             ForEach(Array(pane.tabs.enumerated()), id: \.element.id) { index, tab in
@@ -547,7 +551,7 @@ struct TabBarView: View {
                             ) {
                                 performNewTerminalSplitButtonAction()
                             }
-                            .frame(width: trailing + 30, height: TabBarMetrics.tabHeight)
+                            .frame(width: trailing + 30, height: tabBarHeight)
                             .onDrop(of: [.tabTransfer], delegate: TabDropDelegate(
                                 targetIndex: pane.tabs.count,
                                 pane: pane,
@@ -574,7 +578,7 @@ struct TabBarView: View {
                         scrollToPreferredTarget(proxy, selectedTabId: newTabId)
                     }
                 }
-                .frame(height: TabBarMetrics.barHeight)
+                .frame(height: tabBarHeight)
                 .mask(combinedMask)
                 // Split buttons sit on top of the tab strip. Their backing surface is
                 // painted by `tabBarBackground` so translucent colors are composited once,
@@ -593,7 +597,7 @@ struct TabBarView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: TabBarMetrics.barHeight)
+        .frame(height: tabBarHeight)
         .coordinateSpace(name: "tabBar")
         .background(tabBarBackground)
         .background(TabBarDragAndHoverView(
@@ -861,7 +865,7 @@ struct TabBarView: View {
         ) {
             performNewTerminalSplitButtonAction()
         }
-        .frame(width: 30, height: TabBarMetrics.tabHeight)
+        .frame(width: 30, height: tabBarHeight)
         .onDrop(of: [.tabTransfer], delegate: TabDropDelegate(
             targetIndex: pane.tabs.count,
             pane: pane,

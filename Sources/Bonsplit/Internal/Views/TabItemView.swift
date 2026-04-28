@@ -179,8 +179,8 @@ struct TabItemView: View {
         .frame(
             minWidth: TabBarMetrics.tabMinWidth,
             maxWidth: TabBarMetrics.tabMaxWidth,
-            minHeight: TabBarMetrics.tabHeight,
-            maxHeight: TabBarMetrics.tabHeight
+            minHeight: tabHeight,
+            maxHeight: tabHeight
         )
         .padding(.bottom, isSelected ? 1 : 0)
         .background(tabBackground.saturation(saturation))
@@ -240,7 +240,11 @@ struct TabItemView: View {
 
     private var accessorySlotSize: CGFloat {
         // Keep accessory affordances readable when the tab title font is increased.
-        min(TabBarMetrics.tabHeight, max(TabBarMetrics.closeButtonSize, ceil(accessoryFontSize + 4)))
+        min(tabHeight, max(TabBarMetrics.closeButtonSize, ceil(accessoryFontSize + 4)))
+    }
+
+    private var tabHeight: CGFloat {
+        max(1, appearance.tabBarHeight)
     }
 
     private func shortcutHintWidth(for label: String) -> CGFloat {
