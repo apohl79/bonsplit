@@ -487,6 +487,11 @@ extension BonsplitConfiguration {
         /// Optional color overrides for tab/pane chrome.
         public var chromeColors: ChromeColors
 
+        /// When true, the host app is trying to make all surfaces share the
+        /// same backdrop. Bonsplit should avoid local chrome color adjustments
+        /// that would create visibly different translucent layers.
+        public var usesSharedBackdrop: Bool
+
         // MARK: - Presets
 
         public static let `default` = Appearance()
@@ -525,7 +530,8 @@ extension BonsplitConfiguration {
             splitButtonTooltips: SplitButtonTooltips = .default,
             animationDuration: Double = 0.15,
             enableAnimations: Bool = true,
-            chromeColors: ChromeColors = .init()
+            chromeColors: ChromeColors = .init(),
+            usesSharedBackdrop: Bool = false
         ) {
             self.tabBarHeight = tabBarHeight
             self.tabMinWidth = tabMinWidth
@@ -544,6 +550,7 @@ extension BonsplitConfiguration {
             self.animationDuration = animationDuration
             self.enableAnimations = enableAnimations
             self.chromeColors = chromeColors
+            self.usesSharedBackdrop = usesSharedBackdrop
         }
 
         private static func uniqueSplitButtons(_ buttons: [SplitActionButton]) -> [SplitActionButton] {

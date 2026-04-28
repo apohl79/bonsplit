@@ -151,6 +151,9 @@ enum TabBarColors {
         guard let custom = tabBarBackgroundColor(for: appearance) else {
             return activeTabBackground
         }
+        if appearance.usesSharedBackdrop {
+            return Color(nsColor: custom)
+        }
         let adjusted = custom.isBonsplitLightColor
             ? custom.bonsplitDarken(by: 0.065)
             : custom.bonsplitLighten(by: 0.12)
@@ -164,6 +167,9 @@ enum TabBarColors {
     static func hoveredTabBackground(for appearance: BonsplitConfiguration.Appearance) -> Color {
         guard let custom = tabBarBackgroundColor(for: appearance) else {
             return hoveredTabBackground
+        }
+        if appearance.usesSharedBackdrop {
+            return .clear
         }
         let adjusted = custom.isBonsplitLightColor
             ? custom.bonsplitDarken(by: 0.03)

@@ -977,6 +977,10 @@ struct TabBarView: View {
         focused: Bool,
         style: BonsplitConfiguration.Appearance.SplitButtonBackdropStyle
     ) -> NSColor {
+        if appearance.usesSharedBackdrop {
+            return TabBarColors.nsColorSplitButtonBackdropSurface(for: appearance)
+        }
+
         switch style {
         case .opaquePaneBackground:
             return TabBarColors.nsColorPaneBackground(for: appearance).withAlphaComponent(1.0)
@@ -1083,14 +1087,11 @@ struct TabBarView: View {
     @ViewBuilder
     private var tabBarBackground: some View {
         let baseBarColor = TabBarColors.nsColorBarBackground(for: appearance)
-        let barColor = isFocused
+        let barColor = appearance.usesSharedBackdrop || isFocused
             ? baseBarColor
             : baseBarColor.withAlphaComponent(baseBarColor.alphaComponent * 0.95)
-        let barFill = Color(nsColor: barColor)
-
         HStack(spacing: 0) {
-            Rectangle()
-                .fill(barFill)
+            TabBarLayerBackedColor(color: barColor)
                 .frame(maxWidth: .infinity)
             if shouldPaintSplitButtonBackdrop {
                 let effect = splitButtonBackdropEffect
@@ -1122,8 +1123,7 @@ struct TabBarView: View {
                     )
                     .frame(width: splitButtonBackdropFadeWidth)
                 }
-                Rectangle()
-                    .fill(Color(nsColor: trailingColor))
+                TabBarLayerBackedColor(color: trailingColor)
                     .frame(width: splitButtonBackdropSolidWidth)
             }
         }
@@ -1150,6 +1150,52 @@ struct TabBarView: View {
                 }
                 .frame(height: 1)
             }
+    }
+}
+
+private struct TabBarLayerBackedColor: NSViewRepresentable {
+    let color: NSColor
+
+    func makeNSView(context _: Context) -> NSView {
+        let view = View()
+        view.setColor(color)
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context _: Context) {
+        (nsView as? View)?.setColor(color)
+    }
+
+    private final class View: NSView {
+        override init(frame frameRect: NSRect) {
+            super.init(frame: frameRect)
+            setup()
+        }
+
+        required init?(coder: NSCoder) {
+            super.init(coder: coder)
+            setup()
+        }
+
+        override var isOpaque: Bool { false }
+
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            nil
+        }
+
+        private func setup() {
+            wantsLayer = true
+            layer?.masksToBounds = true
+            layer?.isOpaque = false
+        }
+
+        func setColor(_ color: NSColor) {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            layer?.backgroundColor = color.cgColor
+            layer?.isOpaque = color.alphaComponent >= 1
+            CATransaction.commit()
+        }
     }
 }
 
@@ -1564,8 +1610,29 @@ private struct TabBarScrollViewResolver: NSViewRepresentable {
         func resolveScrollView() {
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
-                onResolve?(self.enclosingScrollView)
+                let scrollView = self.enclosingScrollView
+                self.makeScrollStackTransparent(scrollView)
+                onResolve?(scrollView)
             }
+        }
+
+        private func makeScrollStackTransparent(_ scrollView: NSScrollView?) {
+            scrollView?.drawsBackground = false
+            scrollView?.backgroundColor = .clear
+            scrollView?.wantsLayer = true
+            scrollView?.layer?.backgroundColor = NSColor.clear.cgColor
+            scrollView?.layer?.isOpaque = false
+
+            let clipView = scrollView?.contentView
+            clipView?.drawsBackground = false
+            clipView?.backgroundColor = .clear
+            clipView?.wantsLayer = true
+            clipView?.layer?.backgroundColor = NSColor.clear.cgColor
+            clipView?.layer?.isOpaque = false
+
+            scrollView?.documentView?.wantsLayer = true
+            scrollView?.documentView?.layer?.backgroundColor = NSColor.clear.cgColor
+            scrollView?.documentView?.layer?.isOpaque = false
         }
     }
 }
