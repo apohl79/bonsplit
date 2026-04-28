@@ -1031,6 +1031,42 @@ struct TabBarView: View {
         )
     }
 
+    private static func splitButtonBackdropColors(
+        from base: NSColor,
+        to target: NSColor,
+        leadingOpacity: CGFloat,
+        trailingOpacity: CGFloat,
+        usesSharedBackdrop: Bool
+    ) -> (leading: NSColor, trailing: NSColor) {
+        if usesSharedBackdrop {
+            return (
+                alphaOnlySurfaceColor(target, opacity: leadingOpacity),
+                alphaOnlySurfaceColor(target, opacity: trailingOpacity)
+            )
+        }
+
+        return (
+            blendedSurfaceColor(from: base, to: target, amount: leadingOpacity),
+            blendedSurfaceColor(from: base, to: target, amount: trailingOpacity)
+        )
+    }
+
+    private static func alphaOnlySurfaceColor(
+        _ color: NSColor,
+        opacity: CGFloat
+    ) -> NSColor {
+        let clampedOpacity = min(max(opacity, 0), 1)
+        guard let source = color.usingColorSpace(.sRGB) else {
+            return color.withAlphaComponent(color.alphaComponent * clampedOpacity)
+        }
+        return NSColor(
+            red: source.redComponent,
+            green: source.greenComponent,
+            blue: source.blueComponent,
+            alpha: source.alphaComponent * clampedOpacity
+        )
+    }
+
     // MARK: - Combined Mask (scroll fades + button area)
     //
     // The split-button backdrop is responsible for occluding content under the controls.
@@ -1100,30 +1136,27 @@ struct TabBarView: View {
                     focused: isFocused,
                     style: effect.style
                 )
-                let leadingColor = Self.blendedSurfaceColor(
+                let colors = Self.splitButtonBackdropColors(
                     from: barColor,
                     to: targetColor,
-                    amount: effect.leadingOpacity
-                )
-                let trailingColor = Self.blendedSurfaceColor(
-                    from: barColor,
-                    to: targetColor,
-                    amount: effect.trailingOpacity
+                    leadingOpacity: effect.leadingOpacity,
+                    trailingOpacity: effect.trailingOpacity,
+                    usesSharedBackdrop: appearance.usesSharedBackdrop
                 )
                 if splitButtonBackdropFadeWidth > 0 {
                     let rampStart = splitButtonBackdropFadeRampStartFraction
                     LinearGradient(
                         stops: [
-                            .init(color: Color(nsColor: leadingColor), location: 0),
-                            .init(color: Color(nsColor: leadingColor), location: rampStart),
-                            .init(color: Color(nsColor: trailingColor), location: 1)
+                            .init(color: Color(nsColor: colors.leading), location: 0),
+                            .init(color: Color(nsColor: colors.leading), location: rampStart),
+                            .init(color: Color(nsColor: colors.trailing), location: 1)
                         ],
                         startPoint: .leading,
                         endPoint: .trailing
                     )
                     .frame(width: splitButtonBackdropFadeWidth)
                 }
-                TabBarLayerBackedColor(color: trailingColor)
+                TabBarLayerBackedColor(color: colors.trailing)
                     .frame(width: splitButtonBackdropSolidWidth)
             }
         }
