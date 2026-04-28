@@ -418,6 +418,11 @@ extension BonsplitConfiguration {
             }
         }
 
+        public enum CloseButtonPosition: String, CaseIterable, Sendable {
+            case leading
+            case trailing
+        }
+
         // MARK: - Tab Bar
 
         /// Height of the tab bar
@@ -474,6 +479,9 @@ extension BonsplitConfiguration {
         /// Tooltip text for the tab bar's right-side action buttons
         public var splitButtonTooltips: SplitButtonTooltips
 
+        /// Side of each tab where the close button and dirty indicator are shown.
+        public var closeButtonPosition: CloseButtonPosition
+
         // MARK: - Animations
 
         /// Duration of animations
@@ -528,6 +536,7 @@ extension BonsplitConfiguration {
             splitButtonBackdropEffect: SplitButtonBackdropEffect? = nil,
             tabBarLeadingInset: CGFloat = 0,
             splitButtonTooltips: SplitButtonTooltips = .default,
+            closeButtonPosition: CloseButtonPosition = .trailing,
             animationDuration: Double = 0.15,
             enableAnimations: Bool = true,
             chromeColors: ChromeColors = .init(),
@@ -547,6 +556,7 @@ extension BonsplitConfiguration {
             self.splitButtonBackdropEffect = splitButtonBackdropEffect
             self.tabBarLeadingInset = tabBarLeadingInset
             self.splitButtonTooltips = splitButtonTooltips
+            self.closeButtonPosition = closeButtonPosition
             self.animationDuration = animationDuration
             self.enableAnimations = enableAnimations
             self.chromeColors = chromeColors

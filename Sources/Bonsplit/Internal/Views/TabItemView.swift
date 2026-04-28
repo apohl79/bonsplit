@@ -77,6 +77,10 @@ struct TabItemView: View {
 
     var body: some View {
         HStack(spacing: 0) {
+            if appearance.closeButtonPosition == .leading {
+                closeButtonSlot
+            }
+
             // Icon + title block uses the standard spacing, but keep the close affordance tight.
             HStack(spacing: TabBarMetrics.contentSpacing) {
                 let iconSlotSize = TabBarMetrics.iconSize
@@ -171,8 +175,11 @@ struct TabItemView: View {
 
             Spacer(minLength: 0)
 
-            // Close button / dirty indicator / shortcut hint share the same trailing slot.
-            trailingAccessory
+            if appearance.closeButtonPosition == .trailing {
+                trailingAccessory
+            } else if shortcutHintLabel != nil {
+                shortcutHintAccessory
+            }
         }
         .padding(.horizontal, TabBarMetrics.tabHorizontalPadding)
         .offset(y: isSelected ? 0.5 : 0)
@@ -252,35 +259,7 @@ struct TabItemView: View {
     @ViewBuilder
     private var trailingAccessory: some View {
         ZStack(alignment: .center) {
-            if let shortcutHintLabel {
-                Text(shortcutHintLabel)
-                    .font(.system(size: accessoryFontSize, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .foregroundStyle(
-                        isSelected
-                            ? TabBarColors.activeText(for: appearance)
-                            : TabBarColors.inactiveText(for: appearance)
-                    )
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 1)
-                    .background(
-                        Capsule(style: .continuous)
-                            .fill(.regularMaterial)
-                            .overlay(
-                                Capsule(style: .continuous)
-                                    .stroke(Color.white.opacity(0.30), lineWidth: 0.8)
-                            )
-                            .shadow(color: Color.black.opacity(0.22), radius: 2, x: 0, y: 1)
-                    )
-                    .offset(
-                        x: TabControlShortcutHintDebugSettings.clamped(controlShortcutHintXOffset),
-                        y: TabControlShortcutHintDebugSettings.clamped(controlShortcutHintYOffset)
-                    )
-                    .opacity(showsShortcutHint ? 1 : 0)
-                    .allowsHitTesting(false)
-            }
+            shortcutHintAccessory
 
             closeOrDirtyIndicator
                 .opacity(showsShortcutHint ? 0 : 1)
@@ -288,6 +267,46 @@ struct TabItemView: View {
         }
         .frame(width: shortcutHintSlotWidth, height: accessorySlotSize, alignment: .center)
         .tabControlShortcutHintVisibilityAnimation(value: showsShortcutHint)
+    }
+
+    private var closeButtonSlot: some View {
+        closeOrDirtyIndicator
+            .frame(width: accessorySlotSize, height: accessorySlotSize, alignment: .center)
+    }
+
+    @ViewBuilder
+    private var shortcutHintAccessory: some View {
+        if let shortcutHintLabel {
+            Text(shortcutHintLabel)
+                .font(.system(size: accessoryFontSize, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .foregroundStyle(
+                    isSelected
+                        ? TabBarColors.activeText(for: appearance)
+                        : TabBarColors.inactiveText(for: appearance)
+                )
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(.regularMaterial)
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .stroke(Color.white.opacity(0.30), lineWidth: 0.8)
+                        )
+                        .shadow(color: Color.black.opacity(0.22), radius: 2, x: 0, y: 1)
+                )
+                .offset(
+                    x: TabControlShortcutHintDebugSettings.clamped(controlShortcutHintXOffset),
+                    y: TabControlShortcutHintDebugSettings.clamped(controlShortcutHintYOffset)
+                )
+                .opacity(showsShortcutHint ? 1 : 0)
+                .allowsHitTesting(false)
+                .frame(width: shortcutHintSlotWidth, height: accessorySlotSize, alignment: .center)
+                .tabControlShortcutHintVisibilityAnimation(value: showsShortcutHint)
+        }
     }
 
     private func updateGlobeFallback() {
