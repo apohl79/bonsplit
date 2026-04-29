@@ -9,6 +9,7 @@ public enum TabContextAction: String, CaseIterable, Sendable {
     case closeToRight
     case closeOthers
     case move
+    case moveToNewWorkspace
     case moveToLeftPane
     case moveToRightPane
     case newTerminalToRight

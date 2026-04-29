@@ -362,6 +362,13 @@ struct TabItemView: View {
 
         contextButton("Move Tab…", action: .move)
 
+        localizedContextButton(
+            "command.moveTabToNewWorkspace.title",
+            defaultValue: "Move Tab to New Workspace",
+            action: .moveToNewWorkspace
+        )
+            .disabled(!contextMenuState.canMoveToNewWorkspace)
+
         if contextMenuState.isTerminal {
             localizedContextButton(
                 "command.moveTabToLeftPane.title",

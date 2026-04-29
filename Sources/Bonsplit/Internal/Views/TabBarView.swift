@@ -277,6 +277,7 @@ struct TabContextMenuState {
     let canCloseToLeft: Bool
     let canCloseToRight: Bool
     let canCloseOthers: Bool
+    let canMoveToNewWorkspace: Bool
     let canMoveToLeftPane: Bool
     let canMoveToRightPane: Bool
     let isZoomed: Bool
@@ -724,6 +725,7 @@ struct TabBarView: View {
             canCloseToLeft: canCloseToLeft,
             canCloseToRight: canCloseToRight,
             canCloseOthers: canCloseOthers,
+            canMoveToNewWorkspace: controller.allTabIds.count > 1,
             canMoveToLeftPane: controller.adjacentPane(to: pane.id, direction: .left) != nil,
             canMoveToRightPane: controller.adjacentPane(to: pane.id, direction: .right) != nil,
             isZoomed: splitViewController.zoomedPaneId == pane.id,
