@@ -1252,24 +1252,26 @@ struct TabBarView: View {
         HStack(spacing: 0) {
             // Left scroll fade
             LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing)
-                .frame(width: canScrollLeft ? fadeWidth : 0)
+                .frame(width: canScrollLeft ? fadeWidth : 0, height: tabBarHeight)
 
             // Visible content area (always opaque so hit testing reaches the tabs)
             Rectangle().fill(Color.black)
+                .frame(height: tabBarHeight)
 
             if shouldMaskTabsUnderSplitButtonBackdrop {
                 LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
-                    .frame(width: splitButtonContentFadeWidth)
+                    .frame(width: splitButtonContentFadeWidth, height: tabBarHeight)
                 // Content is already fully faded before the backdrop ramp starts. This keeps the
                 // beginning of a transparent backdrop fade from blending over bright tab text.
                 Color.clear
-                    .frame(width: splitButtonContentOcclusionWidth)
+                    .frame(width: splitButtonContentOcclusionWidth, height: tabBarHeight)
             } else {
                 // Right scroll fade only when scroll content actually overflows.
                 LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
-                    .frame(width: canScrollRight ? fadeWidth : 0)
+                    .frame(width: canScrollRight ? fadeWidth : 0, height: tabBarHeight)
             }
         }
+        .frame(height: tabBarHeight)
     }
 
     // MARK: - Fade Overlays
@@ -1282,13 +1284,15 @@ struct TabBarView: View {
         let fadeWidth: CGFloat = 24
         HStack(spacing: 0) {
             LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing)
-                .frame(width: canScrollLeft ? fadeWidth : 0)
+                .frame(width: canScrollLeft ? fadeWidth : 0, height: tabBarHeight)
 
             Rectangle().fill(Color.black)
+                .frame(height: tabBarHeight)
 
             LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
-                .frame(width: canScrollRight ? fadeWidth : 0)
+                .frame(width: canScrollRight ? fadeWidth : 0, height: tabBarHeight)
         }
+        .frame(height: tabBarHeight)
     }
 
     // MARK: - Background
@@ -1302,6 +1306,7 @@ struct TabBarView: View {
         HStack(spacing: 0) {
             TabBarLayerBackedColor(color: barColor)
                 .frame(maxWidth: .infinity)
+                .frame(height: tabBarHeight)
             if shouldPaintSplitButtonBackdrop {
                 let effect = splitButtonBackdropEffect
                 let targetColor = Self.buttonBackdropColor(
@@ -1327,12 +1332,13 @@ struct TabBarView: View {
                         startPoint: .leading,
                         endPoint: .trailing
                     )
-                    .frame(width: splitButtonBackdropFadeWidth)
+                    .frame(width: splitButtonBackdropFadeWidth, height: tabBarHeight)
                 }
                 TabBarLayerBackedColor(color: colors.trailing)
-                    .frame(width: splitButtonBackdropSolidWidth)
+                    .frame(width: splitButtonBackdropSolidWidth, height: tabBarHeight)
             }
         }
+        .frame(height: tabBarHeight)
         .overlay {
             GeometryReader { geometry in
                 // Bar-edge chrome stays in tab-bar coordinates so item content

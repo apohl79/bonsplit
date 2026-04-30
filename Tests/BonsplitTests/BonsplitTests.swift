@@ -1520,6 +1520,16 @@ final class BonsplitTests: XCTestCase {
         XCTAssertLessThan(saturation, 0.2)
     }
 
+    @MainActor
+    func testSplitButtonBackdropFadePaintsFullTabBarHeight() {
+        guard let delta = renderedSplitButtonBackdropFadeVerticalColorDelta() else {
+            XCTFail("Expected rendered split button backdrop fade colors")
+            return
+        }
+
+        XCTAssertLessThan(delta, 0.08)
+    }
+
     func testTabBarSeparatorSegmentsClampGapIntoBounds() {
         var segments = TabBarStyling.separatorSegments(totalWidth: 100, gap: -20...40)
         XCTAssertEqual(segments.left, 0, accuracy: 0.0001)
@@ -2166,6 +2176,50 @@ final class BonsplitTests: XCTestCase {
             let laneStartX = size.width - splitButtonLaneWidth
             let sampleRect = NSRect(x: laneStartX + 4, y: 0, width: 40, height: 4)
             return maximumSaturation(in: hostingView, sampleRect: sampleRect)
+        }
+    }
+
+    @MainActor
+    private func renderedSplitButtonBackdropFadeVerticalColorDelta() -> CGFloat? {
+        let size = NSSize(width: 360, height: 28)
+        let appearance = BonsplitConfiguration.Appearance(
+            tabBarHeight: size.height,
+            splitButtonBackdropEffect: .default,
+            chromeColors: .init(
+                backgroundHex: "#000000",
+                tabBarBackgroundHex: "#000000",
+                splitButtonBackdropHex: "#FFFFFF",
+                borderHex: "#00000000"
+            )
+        )
+
+        return renderedTabBarValue(
+            isFocused: true,
+            appearance: appearance,
+            showSplitButtons: true,
+            size: size,
+            configurePane: { pane in
+                let selected = TabItem(title: "", icon: nil)
+                pane.tabs = [selected]
+                pane.selectedTabId = selected.id
+            }
+        ) { hostingView in
+            let sampleX = size.width - 124
+            guard let top = renderedColorInViewCoordinates(
+                in: hostingView,
+                at: NSPoint(x: sampleX, y: 6)
+            )?.usingColorSpace(.sRGB),
+                  let bottom = renderedColorInViewCoordinates(
+                    in: hostingView,
+                    at: NSPoint(x: sampleX, y: size.height - 6)
+                  )?.usingColorSpace(.sRGB) else {
+                return nil
+            }
+
+            return abs(top.redComponent - bottom.redComponent)
+                + abs(top.greenComponent - bottom.greenComponent)
+                + abs(top.blueComponent - bottom.blueComponent)
+                + abs(top.alphaComponent - bottom.alphaComponent)
         }
     }
 
