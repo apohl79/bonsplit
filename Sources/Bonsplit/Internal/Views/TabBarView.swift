@@ -1263,7 +1263,7 @@ struct TabBarView: View {
         guard let selectedTabFrameInBar, totalWidth > 0 else { return nil }
         let minX = min(max(selectedTabFrameInBar.minX, 0), totalWidth)
         let maxX = min(max(selectedTabFrameInBar.maxX, 0), totalWidth)
-        let width = max(0, maxX - minX)
+        let width = max(0, maxX - minX - TabBarMetrics.activeIndicatorTrailingInset)
         guard width > 0 else { return nil }
         return CGRect(
             x: minX,
