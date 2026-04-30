@@ -274,7 +274,6 @@ enum TabBarColors {
     }
 
     static func activeIndicator(saturation: Double) -> Color {
-        guard saturation < 1 else { return Color.accentColor }
         return Color(nsColor: NSColor.controlAccentColor.bonsplitSaturating(by: saturation))
     }
 
