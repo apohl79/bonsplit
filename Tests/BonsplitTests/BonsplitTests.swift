@@ -1350,6 +1350,32 @@ final class BonsplitTests: XCTestCase {
         )
     }
 
+    func testActiveTabIndicatorHeightIsOneAndHalfPixels() {
+        XCTAssertEqual(TabBarMetrics.activeIndicatorHeight, 1.5)
+    }
+
+    @MainActor
+    func testActiveTabIndicatorLeavesTrailingPixelGap() {
+        guard let width = renderedTabBarIndicatorWidth(isFocused: true) else {
+            XCTFail("Expected rendered tab bar indicator width")
+            return
+        }
+
+        XCTAssertEqual(width, TabBarMetrics.tabMinWidth - 1, accuracy: 0.5)
+    }
+
+    @MainActor
+    func testInactiveSelectedTabIndicatorUsesDesaturatedAccent() {
+        guard let focusedSaturation = renderedTabBarIndicatorSaturation(isFocused: true),
+              let unfocusedSaturation = renderedTabBarIndicatorSaturation(isFocused: false) else {
+            XCTFail("Expected rendered tab bar colors")
+            return
+        }
+
+        XCTAssertGreaterThan(focusedSaturation, 0.4)
+        XCTAssertLessThan(unfocusedSaturation, 0.1)
+    }
+
     func testTabBarSeparatorSegmentsClampGapIntoBounds() {
         var segments = TabBarStyling.separatorSegments(totalWidth: 100, gap: -20...40)
         XCTAssertEqual(segments.left, 0, accuracy: 0.0001)
@@ -1945,6 +1971,131 @@ final class BonsplitTests: XCTestCase {
         contentView.layoutSubtreeIfNeeded()
 
         return renderedColor(in: hostingView, at: samplePoint)?.alphaComponent
+    }
+
+    @MainActor
+    private func renderedTabBarIndicatorSaturation(isFocused: Bool) -> CGFloat? {
+        renderedTabBarValue(isFocused: isFocused) { hostingView in
+            let sampleRect = NSRect(x: 4, y: 0, width: 44, height: 4)
+            return maximumSaturation(in: hostingView, sampleRect: sampleRect)
+        }
+    }
+
+    @MainActor
+    private func renderedTabBarIndicatorWidth(isFocused: Bool) -> CGFloat? {
+        renderedTabBarValue(isFocused: isFocused) { hostingView in
+            let sampleRect = NSRect(x: 0, y: 0, width: 80, height: 4)
+            return highSaturationWidth(in: hostingView, sampleRect: sampleRect)
+        }
+    }
+
+    @MainActor
+    private func renderedTabBarValue<T>(isFocused: Bool, extract: (NSView) -> T?) -> T? {
+        let controller = BonsplitController()
+        guard let pane = controller.internalController.rootNode.allPanes.first else { return nil }
+        let tab = TabItem(title: "", icon: nil)
+        pane.tabs = [tab]
+        pane.selectedTabId = tab.id
+
+        let size = NSSize(width: 160, height: TabBarMetrics.barHeight)
+        let hostingView = NSHostingView(
+            rootView: TabBarView(pane: pane, isFocused: isFocused, showSplitButtons: false)
+                .environment(controller)
+                .environment(controller.internalController)
+        )
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: size),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        defer { window.orderOut(nil) }
+        guard let contentView = window.contentView else { return nil }
+
+        contentView.wantsLayer = true
+        contentView.layer?.backgroundColor = NSColor.clear.cgColor
+        hostingView.frame = NSRect(origin: .zero, size: size)
+        hostingView.autoresizingMask = [.width, .height]
+        contentView.addSubview(hostingView)
+
+        window.makeKeyAndOrderFront(nil)
+        contentView.layoutSubtreeIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        contentView.layoutSubtreeIfNeeded()
+
+        return extract(hostingView)
+    }
+
+    @MainActor
+    private func maximumSaturation(in view: NSView, sampleRect: NSRect? = nil) -> CGFloat? {
+        let integralBounds = view.bounds.integral
+        guard let bitmap = view.bitmapImageRepForCachingDisplay(in: integralBounds) else { return nil }
+        bitmap.size = integralBounds.size
+        view.cacheDisplay(in: integralBounds, to: bitmap)
+
+        let rect = sampleRect ?? integralBounds
+        let scaleX = CGFloat(bitmap.pixelsWide) / max(1, integralBounds.width)
+        let scaleY = CGFloat(bitmap.pixelsHigh) / max(1, integralBounds.height)
+        let minX = max(0, Int(floor(rect.minX * scaleX)))
+        let maxX = min(bitmap.pixelsWide, Int(ceil(rect.maxX * scaleX)))
+        let minY = max(0, Int(floor(rect.minY * scaleY)))
+        let maxY = min(bitmap.pixelsHigh, Int(ceil(rect.maxY * scaleY)))
+
+        var maximum: CGFloat = 0
+        for y in minY..<maxY {
+            for x in minX..<maxX {
+                guard let color = bitmap.colorAt(x: x, y: y),
+                      let rgb = color.usingColorSpace(.sRGB),
+                      rgb.alphaComponent > 0.05 else { continue }
+                let red = rgb.redComponent
+                let green = rgb.greenComponent
+                let blue = rgb.blueComponent
+                let high = max(red, green, blue)
+                guard high > 0.01 else { continue }
+                let low = min(red, green, blue)
+                let saturation = (high - low) / high
+                maximum = max(maximum, saturation)
+            }
+        }
+        return maximum
+    }
+
+    @MainActor
+    private func highSaturationWidth(in view: NSView, sampleRect: NSRect) -> CGFloat? {
+        let integralBounds = view.bounds.integral
+        guard let bitmap = view.bitmapImageRepForCachingDisplay(in: integralBounds) else { return nil }
+        bitmap.size = integralBounds.size
+        view.cacheDisplay(in: integralBounds, to: bitmap)
+
+        let scaleX = CGFloat(bitmap.pixelsWide) / max(1, integralBounds.width)
+        let scaleY = CGFloat(bitmap.pixelsHigh) / max(1, integralBounds.height)
+        let minX = max(0, Int(floor(sampleRect.minX * scaleX)))
+        let maxX = min(bitmap.pixelsWide, Int(ceil(sampleRect.maxX * scaleX)))
+        let minY = max(0, Int(floor(sampleRect.minY * scaleY)))
+        let maxY = min(bitmap.pixelsHigh, Int(ceil(sampleRect.maxY * scaleY)))
+
+        var activeColumnCount = 0
+        for x in minX..<maxX {
+            var hasIndicatorPixel = false
+            for y in minY..<maxY {
+                guard let color = bitmap.colorAt(x: x, y: y),
+                      let rgb = color.usingColorSpace(.sRGB),
+                      rgb.alphaComponent > 0.05 else { continue }
+                let high = max(rgb.redComponent, rgb.greenComponent, rgb.blueComponent)
+                guard high > 0.01 else { continue }
+                let low = min(rgb.redComponent, rgb.greenComponent, rgb.blueComponent)
+                if (high - low) / high > 0.4 {
+                    hasIndicatorPixel = true
+                    break
+                }
+            }
+            if hasIndicatorPixel {
+                activeColumnCount += 1
+            }
+        }
+        return CGFloat(activeColumnCount) / scaleX
     }
 
     @MainActor

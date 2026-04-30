@@ -511,6 +511,7 @@ struct TabBarView: View {
                         }
                         .padding(.horizontal, TabBarMetrics.barPadding)
                         .padding(.trailing, trailingTabContentInset)
+                        .frame(height: tabBarHeight, alignment: .top)
                         .animation(nil, value: pane.tabs.map(\.id))
                         .background(
                             GeometryReader { contentGeo in
@@ -1211,29 +1212,65 @@ struct TabBarView: View {
                     .frame(width: splitButtonBackdropSolidWidth)
             }
         }
-            .overlay(alignment: .bottom) {
-                GeometryReader { geometry in
-                    let separator = TabBarColors.separator(for: appearance)
-                    let gapRange: ClosedRange<CGFloat>? = selectedTabFrameInBar.map { frame in
-                        frame.minX...frame.maxX
-                    }
-                    let segments = TabBarStyling.separatorSegments(
-                        totalWidth: geometry.size.width,
-                        gap: gapRange
-                    )
-
-                    HStack(spacing: 0) {
-                        Rectangle()
-                            .fill(separator)
-                            .frame(width: segments.left, height: 1)
-                        Spacer(minLength: 0)
-                        Rectangle()
-                            .fill(separator)
-                            .frame(width: segments.right, height: 1)
-                    }
+        .overlay {
+            GeometryReader { geometry in
+                // Bar-edge chrome stays in tab-bar coordinates so item content
+                // offsets and padding cannot move it.
+                ZStack(alignment: .topLeading) {
+                    selectedTabIndicator(totalWidth: geometry.size.width)
+                    tabBarBottomSeparator(totalWidth: geometry.size.width)
                 }
-                .frame(height: 1)
             }
+            .allowsHitTesting(false)
+        }
+    }
+
+    @ViewBuilder
+    private func selectedTabIndicator(totalWidth: CGFloat) -> some View {
+        if let frame = selectedIndicatorFrame(totalWidth: totalWidth) {
+            Rectangle()
+                .fill(TabBarColors.activeIndicator(saturation: tabBarSaturation))
+                .frame(width: frame.width, height: TabBarMetrics.activeIndicatorHeight)
+                .offset(x: frame.minX)
+        }
+    }
+
+    @ViewBuilder
+    private func tabBarBottomSeparator(totalWidth: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
+            HStack(spacing: 0) {
+                let separator = TabBarColors.separator(for: appearance)
+                let gapRange: ClosedRange<CGFloat>? = selectedTabFrameInBar.map { frame in
+                    frame.minX...frame.maxX
+                }
+                let segments = TabBarStyling.separatorSegments(
+                    totalWidth: totalWidth,
+                    gap: gapRange
+                )
+                Rectangle()
+                    .fill(separator)
+                    .frame(width: segments.left, height: 1)
+                Spacer(minLength: 0)
+                Rectangle()
+                    .fill(separator)
+                    .frame(width: segments.right, height: 1)
+            }
+        }
+    }
+
+    private func selectedIndicatorFrame(totalWidth: CGFloat) -> CGRect? {
+        guard let selectedTabFrameInBar, totalWidth > 0 else { return nil }
+        let minX = min(max(selectedTabFrameInBar.minX, 0), totalWidth)
+        let maxX = min(max(selectedTabFrameInBar.maxX, 0), totalWidth)
+        let width = max(0, maxX - minX - TabBarMetrics.activeIndicatorTrailingInset)
+        guard width > 0 else { return nil }
+        return CGRect(
+            x: minX,
+            y: 0,
+            width: width,
+            height: TabBarMetrics.activeIndicatorHeight
+        )
     }
 }
 
