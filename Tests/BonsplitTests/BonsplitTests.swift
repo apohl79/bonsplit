@@ -80,9 +80,16 @@ final class BonsplitTests: XCTestCase {
         var action: TabContextAction?
         var tabId: TabID?
         var paneId: PaneID?
+        var moveDestinationId: String?
 
         func splitTabBar(_ controller: BonsplitController, didRequestTabContextAction action: TabContextAction, for tab: Bonsplit.Tab, inPane pane: PaneID) {
             self.action = action
+            self.tabId = tab.id
+            self.paneId = pane
+        }
+
+        func splitTabBar(_ controller: BonsplitController, didRequestTabMoveToDestination destinationId: String, for tab: Bonsplit.Tab, inPane pane: PaneID) {
+            self.moveDestinationId = destinationId
             self.tabId = tab.id
             self.paneId = pane
         }
@@ -1035,6 +1042,61 @@ final class BonsplitTests: XCTestCase {
         XCTAssertEqual(spy.action, .markAsRead)
         XCTAssertEqual(spy.tabId, tabId)
         XCTAssertEqual(spy.paneId, pane)
+    }
+
+    @MainActor
+    func testRequestTabMoveDestinationForwardsToDelegate() {
+        let controller = BonsplitController()
+        let pane = controller.focusedPaneId!
+        let tabId = controller.createTab(title: "Test", kind: "terminal")!
+        let spy = TabContextActionDelegateSpy()
+        controller.delegate = spy
+
+        controller.requestTabMove(toDestination: "workspace:abc", for: tabId, inPane: pane)
+
+        XCTAssertEqual(spy.moveDestinationId, "workspace:abc")
+        XCTAssertEqual(spy.tabId, tabId)
+        XCTAssertEqual(spy.paneId, pane)
+    }
+
+    @MainActor
+    func testTabContextMenuBuilderCreatesAppKitMoveSubmenu() throws {
+        let target = TabContextMenuActionTarget()
+        var selectedDestinationId: String?
+        target.onMoveDestination = { selectedDestinationId = $0 }
+        let state = TabContextMenuState(
+            isPinned: false,
+            isUnread: false,
+            isBrowser: false,
+            isTerminal: true,
+            hasCustomTitle: false,
+            canCloseToLeft: true,
+            canCloseToRight: true,
+            canCloseOthers: true,
+            canMoveToNewWorkspace: true,
+            canMoveToLeftPane: false,
+            canMoveToRightPane: true,
+            isZoomed: false,
+            hasSplits: true,
+            moveDestinations: [
+                TabContextMoveDestination(id: "new-workspace", title: "New Workspace"),
+                TabContextMoveDestination(id: "workspace:abc", title: "Workspace A", isEnabled: false)
+            ],
+            shortcuts: [:]
+        )
+        let snapshot = TabContextMenuSnapshot(tabId: UUID(), state: state)
+
+        let menu = TabContextMenuBuilder.makeMenu(snapshot: snapshot, target: target)
+        let moveItem = menu.items.first { $0.title == "Move Tab" }
+
+        XCTAssertNotNil(moveItem)
+        XCTAssertTrue(moveItem?.isEnabled ?? false)
+        XCTAssertEqual(moveItem?.submenu?.items.map(\.title), ["New Workspace", "Workspace A"])
+        XCTAssertEqual(moveItem?.submenu?.items.map(\.isEnabled), [true, false])
+
+        let newWorkspaceItem = try XCTUnwrap(moveItem?.submenu?.items.first)
+        target.performMoveDestination(newWorkspaceItem)
+        XCTAssertEqual(selectedDestinationId, "new-workspace")
     }
 
     @MainActor

@@ -61,6 +61,7 @@ struct TabItemView: View {
     let onClose: () -> Void
     let onZoomToggle: () -> Void
     let onContextAction: (TabContextAction) -> Void
+    let onMoveDestination: (String) -> Void
 
     @State private var isHovered = false
     @State private var isCloseHovered = false
@@ -192,15 +193,17 @@ struct TabItemView: View {
             guard !tab.isPinned else { return }
             onClose()
         }))
+        .background(TabContextMenuPresenter(
+            snapshot: TabContextMenuSnapshot(tabId: tab.id, state: contextMenuState),
+            onContextAction: onContextAction,
+            onMoveDestination: onMoveDestination
+        ))
         .onTapGesture {
             onSelect()
         }
         .onHover { hovering in
             // Keep icon rendering stable while hovering; only accessory/background elements animate.
             isHovered = hovering
-        }
-        .contextMenu {
-            contextMenuContent
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(tab.title)
@@ -344,121 +347,6 @@ struct TabItemView: View {
         if tab.isDirty { parts.append("Modified") }
         if showsZoomIndicator { parts.append("Zoomed") }
         return parts.joined(separator: ", ")
-    }
-
-    @ViewBuilder
-    private var contextMenuContent: some View {
-        contextButton("Rename Tab…", action: .rename)
-
-        if contextMenuState.hasCustomTitle {
-            contextButton("Remove Custom Tab Name", action: .clearName)
-        }
-
-        Divider()
-
-        contextButton("Close Tabs to Left", action: .closeToLeft)
-            .disabled(!contextMenuState.canCloseToLeft)
-
-        contextButton("Close Tabs to Right", action: .closeToRight)
-            .disabled(!contextMenuState.canCloseToRight)
-
-        contextButton("Close Other Tabs", action: .closeOthers)
-            .disabled(!contextMenuState.canCloseOthers)
-
-        contextButton("Move Tab…", action: .move)
-
-        localizedContextButton(
-            "command.moveTabToNewWorkspace.title",
-            defaultValue: "Move Tab to New Workspace",
-            action: .moveToNewWorkspace
-        )
-            .disabled(!contextMenuState.canMoveToNewWorkspace)
-
-        if contextMenuState.isTerminal {
-            localizedContextButton(
-                "command.moveTabToLeftPane.title",
-                defaultValue: "Move to Left Pane",
-                action: .moveToLeftPane
-            )
-                .disabled(!contextMenuState.canMoveToLeftPane)
-
-            localizedContextButton(
-                "command.moveTabToRightPane.title",
-                defaultValue: "Move to Right Pane",
-                action: .moveToRightPane
-            )
-                .disabled(!contextMenuState.canMoveToRightPane)
-        }
-
-        Divider()
-
-        contextButton("New Terminal Tab to Right", action: .newTerminalToRight)
-
-        contextButton("New Browser Tab to Right", action: .newBrowserToRight)
-
-        if contextMenuState.isBrowser {
-            Divider()
-
-            contextButton("Reload Tab", action: .reload)
-
-            contextButton("Duplicate Tab", action: .duplicate)
-        }
-
-        Divider()
-
-        if contextMenuState.hasSplits {
-            contextButton(
-                contextMenuState.isZoomed ? "Exit Zoom" : "Zoom Pane",
-                action: .toggleZoom
-            )
-        }
-
-        contextButton(
-            contextMenuState.isPinned ? "Unpin Tab" : "Pin Tab",
-            action: .togglePin
-        )
-
-        if contextMenuState.isUnread {
-            contextButton("Mark Tab as Read", action: .markAsRead)
-                .disabled(!contextMenuState.canMarkAsRead)
-        } else {
-            contextButton("Mark Tab as Unread", action: .markAsUnread)
-                .disabled(!contextMenuState.canMarkAsUnread)
-        }
-
-        Divider()
-
-        localizedContextButton(
-            "command.copyIdentifiers.title",
-            defaultValue: "Copy IDs",
-            action: .copyIdentifiers
-        )
-    }
-
-    @ViewBuilder
-    private func contextButton(_ title: String, action: TabContextAction) -> some View {
-        if let shortcut = contextMenuState.shortcuts[action] {
-            Button(title) {
-                onContextAction(action)
-            }
-            .keyboardShortcut(shortcut)
-        } else {
-            Button(title) {
-                onContextAction(action)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func localizedContextButton(
-        _ titleKey: String,
-        defaultValue: String,
-        action: TabContextAction
-    ) -> some View {
-        contextButton(
-            Bundle.module.localizedString(forKey: titleKey, value: defaultValue, table: nil),
-            action: action
-        )
     }
 
     // MARK: - Tab Background
@@ -674,5 +562,332 @@ private struct MiddleClickMonitorView: NSViewRepresentable {
     func updateNSView(_ nsView: NSView, context: Context) {
         context.coordinator.view = nsView
         context.coordinator.onMiddleClick = onMiddleClick
+    }
+}
+
+struct TabContextMenuSnapshot {
+    let tabId: UUID
+    let state: TabContextMenuState
+}
+
+final class TabContextMenuActionTarget: NSObject {
+    var onContextAction: ((TabContextAction) -> Void)?
+    var onMoveDestination: ((String) -> Void)?
+
+    @objc func performContextAction(_ sender: NSMenuItem) {
+        guard let rawValue = sender.representedObject as? String,
+              let action = TabContextAction(rawValue: rawValue) else {
+            return
+        }
+        onContextAction?(action)
+    }
+
+    @objc func performMoveDestination(_ sender: NSMenuItem) {
+        guard let destinationId = sender.representedObject as? String else { return }
+        onMoveDestination?(destinationId)
+    }
+}
+
+enum TabContextMenuBuilder {
+    static func makeMenu(
+        snapshot: TabContextMenuSnapshot,
+        target: TabContextMenuActionTarget
+    ) -> NSMenu {
+        let state = snapshot.state
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+
+        addAction(
+            title: localized("tabContext.renameTab", defaultValue: "Rename Tab…"),
+            action: .rename,
+            state: state,
+            target: target,
+            to: menu
+        )
+
+        if state.hasCustomTitle {
+            addAction(
+                title: localized("tabContext.removeCustomTabName", defaultValue: "Remove Custom Tab Name"),
+                action: .clearName,
+                state: state,
+                target: target,
+                to: menu
+            )
+        }
+
+        menu.addItem(.separator())
+
+        addAction(
+            title: localized("tabContext.closeTabsToLeft", defaultValue: "Close Tabs to Left"),
+            action: .closeToLeft,
+            enabled: state.canCloseToLeft,
+            state: state,
+            target: target,
+            to: menu
+        )
+        addAction(
+            title: localized("tabContext.closeTabsToRight", defaultValue: "Close Tabs to Right"),
+            action: .closeToRight,
+            enabled: state.canCloseToRight,
+            state: state,
+            target: target,
+            to: menu
+        )
+        addAction(
+            title: localized("tabContext.closeOtherTabs", defaultValue: "Close Other Tabs"),
+            action: .closeOthers,
+            enabled: state.canCloseOthers,
+            state: state,
+            target: target,
+            to: menu
+        )
+
+        menu.addItem(moveSubmenuItem(state: state, target: target))
+
+        if state.isTerminal {
+            addAction(
+                title: localized("command.moveTabToLeftPane.title", defaultValue: "Move to Left Pane"),
+                action: .moveToLeftPane,
+                enabled: state.canMoveToLeftPane,
+                state: state,
+                target: target,
+                to: menu
+            )
+            addAction(
+                title: localized("command.moveTabToRightPane.title", defaultValue: "Move to Right Pane"),
+                action: .moveToRightPane,
+                enabled: state.canMoveToRightPane,
+                state: state,
+                target: target,
+                to: menu
+            )
+        }
+
+        menu.addItem(.separator())
+
+        addAction(
+            title: localized("tabContext.newTerminalTabToRight", defaultValue: "New Terminal Tab to Right"),
+            action: .newTerminalToRight,
+            state: state,
+            target: target,
+            to: menu
+        )
+        addAction(
+            title: localized("tabContext.newBrowserTabToRight", defaultValue: "New Browser Tab to Right"),
+            action: .newBrowserToRight,
+            state: state,
+            target: target,
+            to: menu
+        )
+
+        if state.isBrowser {
+            menu.addItem(.separator())
+            addAction(
+                title: localized("tabContext.reloadTab", defaultValue: "Reload Tab"),
+                action: .reload,
+                state: state,
+                target: target,
+                to: menu
+            )
+            addAction(
+                title: localized("tabContext.duplicateTab", defaultValue: "Duplicate Tab"),
+                action: .duplicate,
+                state: state,
+                target: target,
+                to: menu
+            )
+        }
+
+        menu.addItem(.separator())
+
+        if state.hasSplits {
+            addAction(
+                title: state.isZoomed
+                    ? localized("tabContext.exitZoom", defaultValue: "Exit Zoom")
+                    : localized("tabContext.zoomPane", defaultValue: "Zoom Pane"),
+                action: .toggleZoom,
+                state: state,
+                target: target,
+                to: menu
+            )
+        }
+
+        addAction(
+            title: state.isPinned
+                ? localized("tabContext.unpinTab", defaultValue: "Unpin Tab")
+                : localized("tabContext.pinTab", defaultValue: "Pin Tab"),
+            action: .togglePin,
+            state: state,
+            target: target,
+            to: menu
+        )
+
+        if state.isUnread {
+            addAction(
+                title: localized("tabContext.markTabAsRead", defaultValue: "Mark Tab as Read"),
+                action: .markAsRead,
+                enabled: state.canMarkAsRead,
+                state: state,
+                target: target,
+                to: menu
+            )
+        } else {
+            addAction(
+                title: localized("tabContext.markTabAsUnread", defaultValue: "Mark Tab as Unread"),
+                action: .markAsUnread,
+                enabled: state.canMarkAsUnread,
+                state: state,
+                target: target,
+                to: menu
+            )
+        }
+
+        menu.addItem(.separator())
+
+        addAction(
+            title: localized("command.copyIdentifiers.title", defaultValue: "Copy IDs"),
+            action: .copyIdentifiers,
+            state: state,
+            target: target,
+            to: menu
+        )
+
+        return menu
+    }
+
+    private static func moveSubmenuItem(
+        state: TabContextMenuState,
+        target: TabContextMenuActionTarget
+    ) -> NSMenuItem {
+        let item = NSMenuItem(
+            title: localized("tabContext.moveTab", defaultValue: "Move Tab"),
+            action: nil,
+            keyEquivalent: ""
+        )
+        let submenu = NSMenu()
+        submenu.autoenablesItems = false
+        for destination in state.moveDestinations {
+            let destinationItem = NSMenuItem(
+                title: destination.title,
+                action: #selector(TabContextMenuActionTarget.performMoveDestination(_:)),
+                keyEquivalent: ""
+            )
+            destinationItem.target = target
+            destinationItem.representedObject = destination.id
+            destinationItem.isEnabled = destination.isEnabled
+            submenu.addItem(destinationItem)
+        }
+        item.submenu = submenu
+        item.isEnabled = !state.moveDestinations.isEmpty
+        return item
+    }
+
+    @discardableResult
+    private static func addAction(
+        title: String,
+        action: TabContextAction,
+        enabled: Bool = true,
+        state: TabContextMenuState,
+        target: TabContextMenuActionTarget,
+        to menu: NSMenu
+    ) -> NSMenuItem {
+        let item = NSMenuItem(
+            title: title,
+            action: #selector(TabContextMenuActionTarget.performContextAction(_:)),
+            keyEquivalent: ""
+        )
+        item.target = target
+        item.representedObject = action.rawValue
+        item.isEnabled = enabled
+        if let shortcut = state.shortcuts[action] {
+            applyShortcut(shortcut, to: item)
+        }
+        menu.addItem(item)
+        return item
+    }
+
+    private static func applyShortcut(_ shortcut: KeyboardShortcut, to item: NSMenuItem) {
+        item.keyEquivalent = String(shortcut.key.character).lowercased()
+        item.keyEquivalentModifierMask = shortcut.modifiers.nsMenuModifierMask
+    }
+
+    private static func localized(_ key: String, defaultValue: String) -> String {
+        Bundle.module.localizedString(forKey: key, value: defaultValue, table: nil)
+    }
+}
+
+private extension EventModifiers {
+    var nsMenuModifierMask: NSEvent.ModifierFlags {
+        var flags: NSEvent.ModifierFlags = []
+        if contains(.command) { flags.insert(.command) }
+        if contains(.shift) { flags.insert(.shift) }
+        if contains(.option) { flags.insert(.option) }
+        if contains(.control) { flags.insert(.control) }
+        return flags
+    }
+}
+
+private struct TabContextMenuPresenter: NSViewRepresentable {
+    let snapshot: TabContextMenuSnapshot
+    let onContextAction: (TabContextAction) -> Void
+    let onMoveDestination: (String) -> Void
+
+    final class Coordinator {
+        var snapshot: TabContextMenuSnapshot
+        let actionTarget = TabContextMenuActionTarget()
+        weak var view: NSView?
+        var monitor: Any?
+
+        init(snapshot: TabContextMenuSnapshot) {
+            self.snapshot = snapshot
+        }
+
+        deinit {
+            if let monitor {
+                NSEvent.removeMonitor(monitor)
+            }
+        }
+
+        func presentMenu(at point: NSPoint, in view: NSView) {
+            let menu = TabContextMenuBuilder.makeMenu(snapshot: snapshot, target: actionTarget)
+            menu.popUp(positioning: nil, at: point, in: view)
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        let coordinator = Coordinator(snapshot: snapshot)
+        coordinator.actionTarget.onContextAction = onContextAction
+        coordinator.actionTarget.onMoveDestination = onMoveDestination
+        return coordinator
+    }
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        view.wantsLayer = true
+        view.layer?.backgroundColor = NSColor.clear.cgColor
+
+        context.coordinator.view = view
+
+        let coordinator = context.coordinator
+        coordinator.monitor = NSEvent.addLocalMonitorForEvents(matching: [.rightMouseDown, .leftMouseDown]) { [weak coordinator] event in
+            guard event.type == .rightMouseDown || event.modifierFlags.contains(.control) else { return event }
+            guard let coordinator, let view = coordinator.view, let window = view.window else { return event }
+            guard event.window === window else { return event }
+
+            let point = view.convert(event.locationInWindow, from: nil)
+            guard view.bounds.contains(point) else { return event }
+
+            coordinator.presentMenu(at: point, in: view)
+            return nil
+        }
+
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.view = nsView
+        context.coordinator.snapshot = snapshot
+        context.coordinator.actionTarget.onContextAction = onContextAction
+        context.coordinator.actionTarget.onMoveDestination = onMoveDestination
     }
 }
