@@ -182,7 +182,6 @@ struct TabItemView: View {
             minHeight: tabHeight,
             maxHeight: tabHeight
         )
-        .padding(.bottom, isSelected ? 1 : 0)
         .background(tabBackground.saturation(saturation))
         .tabControlShortcutHintVisibilityAnimation(value: showsShortcutHint)
         .contentShape(Rectangle())

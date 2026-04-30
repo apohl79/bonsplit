@@ -511,6 +511,7 @@ struct TabBarView: View {
                         }
                         .padding(.horizontal, TabBarMetrics.barPadding)
                         .padding(.trailing, trailingTabContentInset)
+                        .frame(height: tabBarHeight, alignment: .top)
                         .animation(nil, value: pane.tabs.map(\.id))
                         .background(
                             GeometryReader { contentGeo in
