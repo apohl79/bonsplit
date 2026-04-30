@@ -273,6 +273,11 @@ enum TabBarColors {
         return dropIndicator
     }
 
+    static func activeIndicator(saturation: Double) -> Color {
+        guard saturation < 1 else { return Color.accentColor }
+        return Color(nsColor: NSColor.controlAccentColor.bonsplitSaturating(by: saturation))
+    }
+
     static var focusRing: Color {
         Color.accentColor.opacity(0.5)
     }
@@ -340,6 +345,23 @@ private extension NSColor {
         color.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
         let luminance = (0.299 * red) + (0.587 * green) + (0.114 * blue)
         return luminance > 0.5
+    }
+
+    func bonsplitSaturating(by amount: Double) -> NSColor {
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        let color = usingColorSpace(.sRGB) ?? self
+        color.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        let clamped = CGFloat(min(max(amount, 0), 1))
+        let luminance = (0.299 * red) + (0.587 * green) + (0.114 * blue)
+        return NSColor(
+            red: luminance + ((red - luminance) * clamped),
+            green: luminance + ((green - luminance) * clamped),
+            blue: luminance + ((blue - luminance) * clamped),
+            alpha: alpha
+        )
     }
 
     func bonsplitLighten(by amount: CGFloat) -> NSColor {
