@@ -1350,8 +1350,8 @@ final class BonsplitTests: XCTestCase {
         )
     }
 
-    func testActiveTabIndicatorHeightIsTwoPixels() {
-        XCTAssertEqual(TabBarMetrics.activeIndicatorHeight, 2)
+    func testActiveTabIndicatorHeightIsOneAndHalfPixels() {
+        XCTAssertEqual(TabBarMetrics.activeIndicatorHeight, 1.5)
     }
 
     @MainActor
