@@ -1454,6 +1454,16 @@ final class BonsplitTests: XCTestCase {
         XCTAssertLessThan(unfocusedSaturation, 0.1)
     }
 
+    @MainActor
+    func testSplitButtonLaneDoesNotExposeSelectedTabIndicator() {
+        guard let saturation = renderedSplitButtonLaneTopSaturation() else {
+            XCTFail("Expected rendered split button lane colors")
+            return
+        }
+
+        XCTAssertLessThan(saturation, 0.2)
+    }
+
     func testTabBarSeparatorSegmentsClampGapIntoBounds() {
         var segments = TabBarStyling.separatorSegments(totalWidth: 100, gap: -20...40)
         XCTAssertEqual(segments.left, 0, accuracy: 0.0001)
@@ -2068,6 +2078,42 @@ final class BonsplitTests: XCTestCase {
     }
 
     @MainActor
+    private func renderedSplitButtonLaneTopSaturation() -> CGFloat? {
+        let buttonCount = BonsplitConfiguration.SplitActionButton.defaults.count
+        let splitButtonLaneWidth = TabBarStyling.splitButtonsBackdropWidth(buttonCount: buttonCount)
+        let size = NSSize(width: 240, height: 28)
+        let appearance = BonsplitConfiguration.Appearance(
+            tabBarHeight: size.height,
+            splitButtonBackdropEffect: .default,
+            chromeColors: .init(
+                backgroundHex: "#111111",
+                tabBarBackgroundHex: "#181818",
+                splitButtonBackdropHex: "#242424",
+                borderHex: "#666666"
+            )
+        )
+
+        return renderedTabBarValue(
+            isFocused: true,
+            appearance: appearance,
+            showSplitButtons: true,
+            size: size,
+            configurePane: { pane in
+                let selected = TabItem(
+                    title: "selected tab title that reaches under the controls",
+                    icon: nil
+                )
+                pane.tabs = [selected]
+                pane.selectedTabId = selected.id
+            }
+        ) { hostingView in
+            let laneStartX = size.width - splitButtonLaneWidth
+            let sampleRect = NSRect(x: laneStartX + 4, y: 0, width: 40, height: 4)
+            return maximumSaturation(in: hostingView, sampleRect: sampleRect)
+        }
+    }
+
+    @MainActor
     private func renderedSelectedTabLeftSeparatorAlphas() -> (top: CGFloat, bottom: CGFloat)? {
         let appearance = BonsplitConfiguration.Appearance(
             chromeColors: .init(
@@ -2123,6 +2169,8 @@ final class BonsplitTests: XCTestCase {
     private func renderedTabBarValue<T>(
         isFocused: Bool,
         appearance: BonsplitConfiguration.Appearance = .default,
+        showSplitButtons: Bool = false,
+        size: NSSize? = nil,
         configurePane: ((PaneState) -> Void)? = nil,
         extract: (NSView) -> T?
     ) -> T? {
@@ -2136,9 +2184,9 @@ final class BonsplitTests: XCTestCase {
             pane.selectedTabId = tab.id
         }
 
-        let size = NSSize(width: 160, height: TabBarMetrics.barHeight)
+        let size = size ?? NSSize(width: 160, height: TabBarMetrics.barHeight)
         let hostingView = NSHostingView(
-            rootView: TabBarView(pane: pane, isFocused: isFocused, showSplitButtons: false)
+            rootView: TabBarView(pane: pane, isFocused: isFocused, showSplitButtons: showSplitButtons)
                 .environment(controller)
                 .environment(controller.internalController)
         )
