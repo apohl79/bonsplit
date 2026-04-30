@@ -206,6 +206,7 @@ struct TabItemView: View {
         .accessibilityLabel(tab.title)
         .accessibilityValue(accessibilityValue)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .safeHelp(tab.title)
     }
 
     private func glyphSize(for iconName: String) -> CGFloat {
