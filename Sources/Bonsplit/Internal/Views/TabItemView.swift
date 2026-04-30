@@ -52,6 +52,7 @@ struct TabItemView: View {
     let showsZoomIndicator: Bool
     let appearance: BonsplitConfiguration.Appearance
     let saturation: Double
+    let trailingSeparatorBottomInset: CGFloat
     let controlShortcutDigit: Int?
     let allowsShortcutHints: Bool
     let showsControlShortcutHint: Bool
@@ -366,6 +367,7 @@ struct TabItemView: View {
                 Rectangle()
                     .fill(TabBarColors.separator(for: appearance))
                     .frame(width: 1)
+                    .padding(.bottom, max(0, trailingSeparatorBottomInset))
             }
         }
     }
