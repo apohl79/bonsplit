@@ -65,6 +65,25 @@ private struct TabFramePreferenceKey: PreferenceKey {
     }
 }
 
+private struct SplitButtonLaneWidthPreferenceKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+private struct SplitButtonLaneWidthReader: View {
+    var body: some View {
+        GeometryReader { geometry in
+            Color.clear.preference(
+                key: SplitButtonLaneWidthPreferenceKey.self,
+                value: geometry.size.width
+            )
+        }
+    }
+}
+
 @MainActor
 private final class TabBarScrollViewBridge: ObservableObject {
     private struct ScrollMetrics {
@@ -281,21 +300,30 @@ struct TabBarLayout: Equatable {
     let splitButtonCount: Int
     let splitButtonLaneVisible: Bool
     let reservesSplitButtonLane: Bool
+    let measuredSplitButtonLaneWidth: CGFloat
 
     init(
         tabBarHeight: CGFloat,
         splitButtonCount: Int,
         splitButtonLaneVisible: Bool,
-        reservesSplitButtonLane: Bool
+        reservesSplitButtonLane: Bool,
+        measuredSplitButtonLaneWidth: CGFloat = 0
     ) {
         self.barHeight = max(1, tabBarHeight)
         self.splitButtonCount = max(0, splitButtonCount)
         self.splitButtonLaneVisible = splitButtonLaneVisible
         self.reservesSplitButtonLane = reservesSplitButtonLane
+        self.measuredSplitButtonLaneWidth = self.splitButtonCount > 0
+            ? max(0, measuredSplitButtonLaneWidth)
+            : 0
+    }
+
+    var minimumSplitButtonLaneWidth: CGFloat {
+        TabBarStyling.splitButtonsBackdropWidth(buttonCount: splitButtonCount)
     }
 
     var fullSplitButtonLaneWidth: CGFloat {
-        TabBarStyling.splitButtonsBackdropWidth(buttonCount: splitButtonCount)
+        max(minimumSplitButtonLaneWidth, measuredSplitButtonLaneWidth)
     }
 
     var visibleSplitButtonLaneWidth: CGFloat {
@@ -304,10 +332,6 @@ struct TabBarLayout: Equatable {
 
     var trailingTabContentInset: CGFloat {
         reservesSplitButtonLane ? fullSplitButtonLaneWidth : 0
-    }
-
-    var splitActionButtonWidth: CGFloat {
-        TabBarStyling.splitActionButtonReservedWidth
     }
 
     var splitActionButtonHeight: CGFloat {
@@ -395,6 +419,7 @@ struct TabBarView: View {
     @State private var containerWidth: CGFloat = 0
     @State private var selectedTabFrameInBar: CGRect?
     @State private var tabFramesInBar: [UUID: CGRect] = [:]
+    @State private var measuredSplitButtonLaneWidth: CGFloat = 0
     @StateObject private var controlKeyMonitor = TabControlShortcutKeyMonitor()
     @StateObject private var scrollViewBridge = TabBarScrollViewBridge()
 
@@ -431,7 +456,8 @@ struct TabBarView: View {
             tabBarHeight: appearance.tabBarHeight,
             splitButtonCount: visibleSplitButtons.count,
             splitButtonLaneVisible: shouldShowSplitButtons,
-            reservesSplitButtonLane: showSplitButtons && !isMinimalMode
+            reservesSplitButtonLane: showSplitButtons && !isMinimalMode,
+            measuredSplitButtonLaneWidth: measuredSplitButtonLaneWidth
         )
     }
 
@@ -669,6 +695,7 @@ struct TabBarView: View {
                     if shouldRenderSplitButtons {
                         splitButtons
                             .saturation(tabBarSaturation)
+                            .background(SplitButtonLaneWidthReader())
                             .frame(width: splitButtonsBackdropWidth, height: tabBarHeight, alignment: .trailing)
                             .opacity(shouldShowSplitButtons ? 1 : 0)
                             .allowsHitTesting(shouldShowSplitButtons)
@@ -729,6 +756,9 @@ struct TabBarView: View {
         }
         .onPreferenceChange(TabFramePreferenceKey.self) { frames in
             tabFramesInBar = frames
+        }
+        .onPreferenceChange(SplitButtonLaneWidthPreferenceKey.self) { width in
+            measuredSplitButtonLaneWidth = width
         }
         .onDisappear {
             controlKeyMonitor.stop()
@@ -1448,7 +1478,7 @@ private struct SplitActionButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .frame(width: layout.splitActionButtonWidth, height: layout.splitActionButtonHeight)
+            .frame(height: layout.splitActionButtonHeight)
             .contentShape(Rectangle())
             .foregroundStyle(TabBarColors.splitActionIcon(for: appearance, isPressed: configuration.isPressed))
             .opacity(configuration.isPressed ? 0.72 : 1.0)

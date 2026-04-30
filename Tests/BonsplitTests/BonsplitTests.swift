@@ -372,6 +372,62 @@ final class BonsplitTests: XCTestCase {
         )
     }
 
+    func testTabBarLayoutKeepsDefaultSplitButtonLaneWidthAsMinimum() {
+        let compactMeasuredWidth =
+            TabBarStyling.splitButtonsLeadingPadding
+            + TabBarStyling.splitButtonsTrailingPadding
+            + (4 * CGFloat(14))
+            + (3 * TabBarStyling.splitButtonsSpacing)
+        let layout = TabBarLayout(
+            tabBarHeight: 28,
+            splitButtonCount: 4,
+            splitButtonLaneVisible: true,
+            reservesSplitButtonLane: true,
+            measuredSplitButtonLaneWidth: compactMeasuredWidth
+        )
+
+        XCTAssertEqual(
+            layout.fullSplitButtonLaneWidth,
+            TabBarStyling.splitButtonsBackdropWidth(buttonCount: 4)
+        )
+    }
+
+    func testTabBarLayoutExpandsForMeasuredSplitButtonLaneWidth() {
+        let layout = TabBarLayout(
+            tabBarHeight: 28,
+            splitButtonCount: 4,
+            splitButtonLaneVisible: true,
+            reservesSplitButtonLane: true,
+            measuredSplitButtonLaneWidth: 160
+        )
+
+        XCTAssertEqual(layout.fullSplitButtonLaneWidth, 160)
+        XCTAssertEqual(layout.trailingTabContentInset, 160)
+        let indicatorFrame = layout.selectedIndicatorFrame(
+            selectedTabFrame: CGRect(x: 0, y: 0, width: 240, height: 28),
+            totalWidth: 240
+        )
+        XCTAssertNotNil(indicatorFrame)
+        XCTAssertEqual(
+            indicatorFrame?.maxX ?? 0,
+            79,
+            accuracy: 0.001
+        )
+    }
+
+    func testTabBarLayoutIgnoresMeasuredSplitButtonLaneWidthWithoutButtons() {
+        let layout = TabBarLayout(
+            tabBarHeight: 28,
+            splitButtonCount: 0,
+            splitButtonLaneVisible: false,
+            reservesSplitButtonLane: true,
+            measuredSplitButtonLaneWidth: 160
+        )
+
+        XCTAssertEqual(layout.fullSplitButtonLaneWidth, 0)
+        XCTAssertEqual(layout.trailingTabContentInset, 0)
+    }
+
     func testTabBarKeepsNonOverflowingTabsLeadingAligned() {
         let tabId = UUID()
 
