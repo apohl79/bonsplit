@@ -663,12 +663,17 @@ struct TabBarView: View {
     private func tabItem(for tab: TabItem, at index: Int) -> some View {
         let contextMenuState = contextMenuState(for: tab, at: index)
         let showsZoomIndicator = splitViewController.zoomedPaneId == pane.id && pane.selectedTabId == tab.id
+        let isImmediatelyBeforeSelected = pane.tabs.indices.contains(index + 1)
+            && pane.tabs[index + 1].id == pane.selectedTabId
         TabItemView(
             tab: tab,
             isSelected: pane.selectedTabId == tab.id,
             showsZoomIndicator: showsZoomIndicator,
             appearance: appearance,
             saturation: tabBarSaturation,
+            trailingSeparatorBottomInset: isImmediatelyBeforeSelected
+                ? TabBarMetrics.selectedTabLeftSeparatorBottomInset
+                : 0,
             controlShortcutDigit: tabControlShortcutDigit(for: index, tabCount: pane.tabs.count),
             allowsShortcutHints: isFocused && splitViewController.tabShortcutHintsEnabled,
             showsControlShortcutHint: showsControlShortcutHints,

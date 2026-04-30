@@ -1479,6 +1479,17 @@ final class BonsplitTests: XCTestCase {
     }
 
     @MainActor
+    func testSelectedTabLeftSeparatorDoesNotOverlapBottomSeparator() {
+        guard let alphas = renderedSelectedTabLeftSeparatorAlphas() else {
+            XCTFail("Expected rendered selected tab separator alphas")
+            return
+        }
+
+        XCTAssertGreaterThan(alphas.top, 0.3)
+        XCTAssertEqual(alphas.bottom, alphas.top, accuracy: 0.08)
+    }
+
+    @MainActor
     func testInactiveSelectedTabIndicatorUsesDesaturatedAccent() {
         guard let focusedSaturation = renderedTabBarIndicatorSaturation(isFocused: true),
               let unfocusedSaturation = renderedTabBarIndicatorSaturation(isFocused: false) else {
@@ -2104,12 +2115,73 @@ final class BonsplitTests: XCTestCase {
     }
 
     @MainActor
-    private func renderedTabBarValue<T>(isFocused: Bool, extract: (NSView) -> T?) -> T? {
-        let controller = BonsplitController()
+    private func renderedSelectedTabLeftSeparatorAlphas() -> (top: CGFloat, bottom: CGFloat)? {
+        let appearance = BonsplitConfiguration.Appearance(
+            chromeColors: .init(
+                backgroundHex: "#00000000",
+                tabBarBackgroundHex: "#00000000",
+                borderHex: "#FFFFFF80"
+            )
+        )
+        return renderedTabBarValue(
+            isFocused: true,
+            appearance: appearance,
+            configurePane: { pane in
+                let leading = TabItem(title: "", icon: nil)
+                let selected = TabItem(title: "", icon: nil)
+                pane.tabs = [leading, selected]
+                pane.selectedTabId = selected.id
+            }
+        ) { hostingView in
+            let separatorX = TabBarMetrics.tabMinWidth - 0.5
+            guard let top = renderedColorInViewCoordinates(in: hostingView, at: NSPoint(x: separatorX, y: 4))?
+                .usingColorSpace(.sRGB)?
+                .alphaComponent,
+                  let bottom = renderedColorInViewCoordinates(
+                    in: hostingView,
+                    at: NSPoint(x: separatorX, y: TabBarMetrics.barHeight - 0.5)
+                  )?
+                .usingColorSpace(.sRGB)?
+                .alphaComponent else {
+                return nil
+            }
+            return (top: top, bottom: bottom)
+        }
+    }
+
+    @MainActor
+    private func renderedColorInViewCoordinates(in view: NSView, at point: NSPoint) -> NSColor? {
+        let integralBounds = view.bounds.integral
+        guard let bitmap = view.bitmapImageRepForCachingDisplay(in: integralBounds) else { return nil }
+        bitmap.size = integralBounds.size
+        view.cacheDisplay(in: integralBounds, to: bitmap)
+        let scaleX = CGFloat(bitmap.pixelsWide) / max(1, integralBounds.width)
+        let scaleY = CGFloat(bitmap.pixelsHigh) / max(1, integralBounds.height)
+        let x = Int((point.x * scaleX).rounded(.down))
+        let y = Int((point.y * scaleY).rounded(.down))
+        guard x >= 0,
+              y >= 0,
+              x < bitmap.pixelsWide,
+              y < bitmap.pixelsHigh else { return nil }
+        return bitmap.colorAt(x: x, y: y)
+    }
+
+    @MainActor
+    private func renderedTabBarValue<T>(
+        isFocused: Bool,
+        appearance: BonsplitConfiguration.Appearance = .default,
+        configurePane: ((PaneState) -> Void)? = nil,
+        extract: (NSView) -> T?
+    ) -> T? {
+        let controller = BonsplitController(configuration: BonsplitConfiguration(appearance: appearance))
         guard let pane = controller.internalController.rootNode.allPanes.first else { return nil }
-        let tab = TabItem(title: "", icon: nil)
-        pane.tabs = [tab]
-        pane.selectedTabId = tab.id
+        if let configurePane {
+            configurePane(pane)
+        } else {
+            let tab = TabItem(title: "", icon: nil)
+            pane.tabs = [tab]
+            pane.selectedTabId = tab.id
+        }
 
         let size = NSSize(width: 160, height: TabBarMetrics.barHeight)
         let hostingView = NSHostingView(
