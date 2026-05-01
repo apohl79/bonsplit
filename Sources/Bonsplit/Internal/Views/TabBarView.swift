@@ -194,6 +194,7 @@ private final class TabBarScrollViewBridge: ObservableObject {
 
 enum TabBarStyling {
     static let maximumSplitButtonLaneWidthFraction: CGFloat = 0.25
+    static let splitButtonScrollFadeWidth: CGFloat = 12
     static let splitActionButtonReservedWidth: CGFloat = 22
     static let splitButtonsSpacing: CGFloat = 4
     static let splitButtonsLeadingPadding: CGFloat = 6
@@ -209,6 +210,26 @@ enum TabBarStyling {
             + splitButtonsTrailingPadding
             + (CGFloat(buttonCount) * splitActionButtonReservedWidth)
             + (CGFloat(max(0, buttonCount - 1)) * splitButtonsSpacing)
+    }
+
+    static func splitButtonBackdropSolidSurfaceWidth(
+        effectSolidWidth: CGFloat,
+        visibleLaneWidth: CGFloat
+    ) -> CGFloat {
+        max(max(0, effectSolidWidth), max(0, visibleLaneWidth))
+    }
+
+    static func splitButtonScrollAffordances(
+        scrollOffset: CGFloat,
+        contentWidth: CGFloat,
+        viewportWidth: CGFloat
+    ) -> (left: Bool, right: Bool) {
+        let overflowThreshold: CGFloat = 1
+        let maxOffset = max(0, contentWidth - viewportWidth)
+        return (
+            left: scrollOffset > overflowThreshold,
+            right: scrollOffset < maxOffset - overflowThreshold
+        )
     }
 
     static func imageDataShouldRenderAsTemplate(_ data: Data) -> Bool {
@@ -428,6 +449,9 @@ struct TabBarView: View {
     @State private var selectedTabFrameInBar: CGRect?
     @State private var tabFramesInBar: [UUID: CGRect] = [:]
     @State private var measuredSplitButtonLaneWidth: CGFloat = 0
+    @State private var splitButtonScrollOffset: CGFloat = 0
+    @State private var splitButtonContentWidth: CGFloat = 0
+    @State private var splitButtonViewportWidth: CGFloat = 0
     @StateObject private var controlKeyMonitor = TabControlShortcutKeyMonitor()
     @StateObject private var scrollViewBridge = TabBarScrollViewBridge()
 
@@ -523,7 +547,10 @@ struct TabBarView: View {
     }
 
     private var splitButtonBackdropSolidWidth: CGFloat {
-        max(0, splitButtonBackdropEffect.solidWidth)
+        TabBarStyling.splitButtonBackdropSolidSurfaceWidth(
+            effectSolidWidth: splitButtonBackdropEffect.solidWidth,
+            visibleLaneWidth: splitButtonsBackdropWidth
+        )
     }
 
     private var splitButtonBackdropFadeRampStartFraction: CGFloat {
@@ -552,6 +579,18 @@ struct TabBarView: View {
 
     private var leadingScrollAnchorId: String {
         "tab-bar-leading-\(pane.id.id.uuidString)"
+    }
+
+    private var splitButtonScrollCoordinateSpaceName: String {
+        "split-button-scroll-\(pane.id.id.uuidString)"
+    }
+
+    private var splitButtonScrollAffordances: (left: Bool, right: Bool) {
+        TabBarStyling.splitButtonScrollAffordances(
+            scrollOffset: splitButtonScrollOffset,
+            contentWidth: splitButtonContentWidth,
+            viewportWidth: splitButtonViewportWidth
+        )
     }
 
     private func focusPaneFromTabBarChrome() -> Bool {
@@ -1031,9 +1070,57 @@ struct TabBarView: View {
                 .fixedSize(horizontal: true, vertical: false)
                 .frame(minWidth: splitButtonsBackdropWidth, alignment: .trailing)
                 .background(SplitButtonLaneWidthReader())
+                .background(
+                    GeometryReader { contentGeo in
+                        Color.clear
+                            .onChange(
+                                of: contentGeo.frame(in: .named(splitButtonScrollCoordinateSpaceName))
+                            ) { _, newFrame in
+                                updateSplitButtonScrollContent(frame: newFrame)
+                            }
+                            .onAppear {
+                                updateSplitButtonScrollContent(
+                                    frame: contentGeo.frame(in: .named(splitButtonScrollCoordinateSpaceName))
+                                )
+                            }
+                    }
+                )
         }
+        .coordinateSpace(name: splitButtonScrollCoordinateSpaceName)
         .frame(width: splitButtonsBackdropWidth, height: tabBarHeight, alignment: .trailing)
+        .background(
+            GeometryReader { viewportGeo in
+                Color.clear
+                    .onChange(of: viewportGeo.size.width) { _, newWidth in
+                        splitButtonViewportWidth = newWidth
+                    }
+                    .onAppear {
+                        splitButtonViewportWidth = viewportGeo.size.width
+                    }
+            }
+        )
+        .mask(splitButtonScrollMask)
         .clipped()
+    }
+
+    @ViewBuilder
+    private var splitButtonScrollMask: some View {
+        let affordances = splitButtonScrollAffordances
+        let fadeWidth = TabBarStyling.splitButtonScrollFadeWidth
+        HStack(spacing: 0) {
+            LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing)
+                .frame(width: affordances.left ? fadeWidth : 0, height: tabBarHeight)
+            Rectangle().fill(Color.black)
+                .frame(height: tabBarHeight)
+            LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
+                .frame(width: affordances.right ? fadeWidth : 0, height: tabBarHeight)
+        }
+        .frame(height: tabBarHeight)
+    }
+
+    private func updateSplitButtonScrollContent(frame: CGRect) {
+        splitButtonScrollOffset = max(0, -frame.minX)
+        splitButtonContentWidth = frame.width
     }
 
     @ViewBuilder

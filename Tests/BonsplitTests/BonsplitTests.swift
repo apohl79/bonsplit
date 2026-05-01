@@ -437,6 +437,57 @@ final class BonsplitTests: XCTestCase {
         XCTAssertEqual(layout.trailingTabContentInset, 160)
     }
 
+    func testSplitButtonBackdropSolidSurfaceCoversVisibleActionLane() {
+        XCTAssertEqual(
+            TabBarStyling.splitButtonBackdropSolidSurfaceWidth(
+                effectSolidWidth: 2,
+                visibleLaneWidth: 60
+            ),
+            60
+        )
+        XCTAssertEqual(
+            TabBarStyling.splitButtonBackdropSolidSurfaceWidth(
+                effectSolidWidth: 96,
+                visibleLaneWidth: 60
+            ),
+            96
+        )
+    }
+
+    func testSplitButtonScrollAffordancesTrackHiddenButtons() {
+        var affordances = TabBarStyling.splitButtonScrollAffordances(
+            scrollOffset: 0,
+            contentWidth: 320,
+            viewportWidth: 60
+        )
+        XCTAssertFalse(affordances.left)
+        XCTAssertTrue(affordances.right)
+
+        affordances = TabBarStyling.splitButtonScrollAffordances(
+            scrollOffset: 120,
+            contentWidth: 320,
+            viewportWidth: 60
+        )
+        XCTAssertTrue(affordances.left)
+        XCTAssertTrue(affordances.right)
+
+        affordances = TabBarStyling.splitButtonScrollAffordances(
+            scrollOffset: 260,
+            contentWidth: 320,
+            viewportWidth: 60
+        )
+        XCTAssertTrue(affordances.left)
+        XCTAssertFalse(affordances.right)
+
+        affordances = TabBarStyling.splitButtonScrollAffordances(
+            scrollOffset: 0,
+            contentWidth: 60,
+            viewportWidth: 60
+        )
+        XCTAssertFalse(affordances.left)
+        XCTAssertFalse(affordances.right)
+    }
+
     func testTabBarLayoutDoesNotHardClipSelectedChromeAtSplitButtonLane() {
         let layout = TabBarLayout(
             tabBarHeight: 28,
@@ -1573,6 +1624,16 @@ final class BonsplitTests: XCTestCase {
     }
 
     @MainActor
+    func testSplitButtonBackdropSolidSurfaceCoversVisibleLane() {
+        guard let brightness = renderedSplitButtonLaneSolidBackdropBrightness() else {
+            XCTFail("Expected rendered split button lane backdrop color")
+            return
+        }
+
+        XCTAssertGreaterThan(brightness, 0.5)
+    }
+
+    @MainActor
     func testSelectedTabIndicatorFadesIntoSplitButtonLane() {
         guard let brightnesses = renderedSelectedIndicatorFadeBrightnesses() else {
             XCTFail("Expected rendered selected indicator fade colors")
@@ -2273,6 +2334,44 @@ final class BonsplitTests: XCTestCase {
                 + abs(top.greenComponent - bottom.greenComponent)
                 + abs(top.blueComponent - bottom.blueComponent)
                 + abs(top.alphaComponent - bottom.alphaComponent)
+        }
+    }
+
+    @MainActor
+    private func renderedSplitButtonLaneSolidBackdropBrightness() -> CGFloat? {
+        let buttonCount = BonsplitConfiguration.SplitActionButton.defaults.count
+        let size = NSSize(width: 240, height: 28)
+        let splitButtonLaneWidth = visibleSplitButtonLaneWidth(size: size, buttonCount: buttonCount)
+        let appearance = BonsplitConfiguration.Appearance(
+            tabBarHeight: size.height,
+            splitButtonBackdropEffect: .default,
+            chromeColors: .init(
+                backgroundHex: "#000000",
+                tabBarBackgroundHex: "#000000",
+                splitButtonBackdropHex: "#FFFFFF",
+                borderHex: "#00000000"
+            )
+        )
+
+        return renderedTabBarValue(
+            isFocused: true,
+            appearance: appearance,
+            showSplitButtons: true,
+            size: size,
+            configurePane: { pane in
+                let selected = TabItem(title: "", icon: nil)
+                pane.tabs = [selected]
+                pane.selectedTabId = selected.id
+            }
+        ) { hostingView in
+            let laneStartX = size.width - splitButtonLaneWidth
+            guard let color = renderedColorInViewCoordinates(
+                in: hostingView,
+                at: NSPoint(x: laneStartX + 2, y: size.height / 2)
+            )?.usingColorSpace(.sRGB) else {
+                return nil
+            }
+            return brightness(of: color)
         }
     }
 
