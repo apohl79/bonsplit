@@ -3169,9 +3169,10 @@ final class BonsplitTests: XCTestCase {
                 guard let color = bitmap.colorAt(x: x, y: y),
                       let rgb = color.usingColorSpace(.sRGB),
                       rgb.alphaComponent > 0.05 else { continue }
-                let red = rgb.redComponent
-                let green = rgb.greenComponent
-                let blue = rgb.blueComponent
+                let alpha = min(max(rgb.alphaComponent, 0), 1)
+                let red = rgb.redComponent * alpha
+                let green = rgb.greenComponent * alpha
+                let blue = rgb.blueComponent * alpha
                 let high = max(red, green, blue)
                 guard high > 0.01 else { continue }
                 let low = min(red, green, blue)
@@ -3202,9 +3203,14 @@ final class BonsplitTests: XCTestCase {
                 guard let color = bitmap.colorAt(x: x, y: y),
                       let rgb = color.usingColorSpace(.sRGB),
                       rgb.alphaComponent > 0.05 else { continue }
+                let alpha = min(max(rgb.alphaComponent, 0), 1)
                 maximum = max(
                     maximum,
-                    max(rgb.redComponent, rgb.greenComponent, rgb.blueComponent)
+                    max(
+                        rgb.redComponent * alpha,
+                        rgb.greenComponent * alpha,
+                        rgb.blueComponent * alpha
+                    )
                 )
             }
         }
@@ -3212,7 +3218,14 @@ final class BonsplitTests: XCTestCase {
     }
 
     private func brightness(of color: NSColor) -> CGFloat {
-        max(color.redComponent, color.greenComponent, color.blueComponent)
+        guard let rgb = color.usingColorSpace(.sRGB) else { return 0 }
+        let alpha = min(max(rgb.alphaComponent, 0), 1)
+        guard alpha > 0.01 else { return 0 }
+        return max(
+            rgb.redComponent * alpha,
+            rgb.greenComponent * alpha,
+            rgb.blueComponent * alpha
+        )
     }
 
     @MainActor
@@ -3236,9 +3249,13 @@ final class BonsplitTests: XCTestCase {
                 guard let color = bitmap.colorAt(x: x, y: y),
                       let rgb = color.usingColorSpace(.sRGB),
                       rgb.alphaComponent > 0.05 else { continue }
-                let high = max(rgb.redComponent, rgb.greenComponent, rgb.blueComponent)
+                let alpha = min(max(rgb.alphaComponent, 0), 1)
+                let red = rgb.redComponent * alpha
+                let green = rgb.greenComponent * alpha
+                let blue = rgb.blueComponent * alpha
+                let high = max(red, green, blue)
                 guard high > 0.01 else { continue }
-                let low = min(rgb.redComponent, rgb.greenComponent, rgb.blueComponent)
+                let low = min(red, green, blue)
                 if (high - low) / high > 0.4 {
                     hasIndicatorPixel = true
                     break
