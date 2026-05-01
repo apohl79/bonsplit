@@ -451,10 +451,10 @@ struct TabBarChromeSnapshot {
             usesSharedBackdrop: appearance.usesSharedBackdrop
         )
 
-        self.paintsActionLaneSurface = shouldShowSplitButtons
-            && effect.style != .hidden
+        let canUseActionLaneChrome = shouldShowSplitButtons && effect.style != .hidden
+        self.paintsActionLaneSurface = canUseActionLaneChrome
             && TabBarColors.shouldPaintSplitButtonBackdrop(for: appearance)
-        self.masksTabContentUnderActionLane = paintsActionLaneSurface && effect.masksTabContent
+        self.masksTabContentUnderActionLane = canUseActionLaneChrome && effect.masksTabContent
         self.contentFadeWidth = masksTabContentUnderActionLane ? effect.contentFadeWidth : 0
         self.contentOcclusionWidth = masksTabContentUnderActionLane ? actionLaneWidth : 0
         self.backdropFadeWidth = max(0, effect.fadeWidth)

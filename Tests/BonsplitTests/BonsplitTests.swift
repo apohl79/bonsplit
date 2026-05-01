@@ -1667,13 +1667,28 @@ final class BonsplitTests: XCTestCase {
     }
 
     @MainActor
-    func testSharedBackdropManySplitButtonsPaintsActionLaneSurface() {
+    func testSharedBackdropTransparentActionLaneDoesNotPaintSyntheticSurface() {
+        let appearance = BonsplitConfiguration.Appearance(
+            chromeColors: .init(
+                backgroundHex: "#272822B8",
+                tabBarBackgroundHex: "#00000000",
+                splitButtonBackdropHex: "#00000000",
+                paneBackgroundHex: "#00000000"
+            ),
+            usesSharedBackdrop: true
+        )
+
+        XCTAssertFalse(TabBarColors.shouldPaintSplitButtonBackdrop(for: appearance))
+    }
+
+    @MainActor
+    func testSharedBackdropManySplitButtonsMaskTabContentWithoutSyntheticSurface() {
         guard let alpha = renderedSharedBackdropActionLaneSurfaceAlpha() else {
             XCTFail("Expected rendered shared backdrop action lane color")
             return
         }
 
-        XCTAssertGreaterThan(alpha, 0.2)
+        XCTAssertLessThan(alpha, 0.05)
     }
 
     func testTabBarSeparatorSegmentsClampGapIntoBounds() {
@@ -2587,7 +2602,7 @@ final class BonsplitTests: XCTestCase {
             let laneStartX = size.width - splitButtonLaneWidth
             guard let color = renderedColorInViewCoordinates(
                 in: hostingView,
-                at: NSPoint(x: laneStartX + 6, y: 6)
+                at: NSPoint(x: laneStartX + 2, y: 2)
             )?.usingColorSpace(.sRGB) else {
                 return nil
             }
