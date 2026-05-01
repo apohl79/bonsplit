@@ -441,7 +441,7 @@ final class BonsplitTests: XCTestCase {
         XCTAssertEqual(
             TabBarStyling.splitButtonBackdropSolidSurfaceWidth(
                 effectSolidWidth: 2,
-                visibleLaneWidth: 60,
+                contentOcclusionWidth: 60,
                 contentFadeWidth: 42
             ),
             102
@@ -449,10 +449,27 @@ final class BonsplitTests: XCTestCase {
         XCTAssertEqual(
             TabBarStyling.splitButtonBackdropSolidSurfaceWidth(
                 effectSolidWidth: 96,
-                visibleLaneWidth: 60,
+                contentOcclusionWidth: 60,
                 contentFadeWidth: 24
             ),
             96
+        )
+    }
+
+    func testSplitButtonContentOcclusionFractionLimitsSolidSurface() {
+        let occlusion = TabBarStyling.splitButtonContentOcclusionWidth(
+            visibleLaneWidth: 200,
+            contentOcclusionFraction: 0.25
+        )
+
+        XCTAssertEqual(occlusion, 50)
+        XCTAssertEqual(
+            TabBarStyling.splitButtonBackdropSolidSurfaceWidth(
+                effectSolidWidth: 2,
+                contentOcclusionWidth: occlusion,
+                contentFadeWidth: 24
+            ),
+            74
         )
     }
 

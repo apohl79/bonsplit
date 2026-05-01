@@ -214,11 +214,18 @@ enum TabBarStyling {
 
     static func splitButtonBackdropSolidSurfaceWidth(
         effectSolidWidth: CGFloat,
-        visibleLaneWidth: CGFloat,
+        contentOcclusionWidth: CGFloat,
         contentFadeWidth: CGFloat
     ) -> CGFloat {
-        let controlSurfaceWidth = max(0, visibleLaneWidth) + max(0, contentFadeWidth)
+        let controlSurfaceWidth = max(0, contentOcclusionWidth) + max(0, contentFadeWidth)
         return max(max(0, effectSolidWidth), controlSurfaceWidth)
+    }
+
+    static func splitButtonContentOcclusionWidth(
+        visibleLaneWidth: CGFloat,
+        contentOcclusionFraction: CGFloat
+    ) -> CGFloat {
+        max(0, visibleLaneWidth) * min(max(0, contentOcclusionFraction), 1)
     }
 
     static func splitButtonScrollAffordances(
@@ -456,11 +463,17 @@ struct TabBarChromeSnapshot {
             && TabBarColors.shouldPaintSplitButtonBackdrop(for: appearance)
         self.masksTabContentUnderActionLane = canUseActionLaneChrome && effect.masksTabContent
         self.contentFadeWidth = masksTabContentUnderActionLane ? effect.contentFadeWidth : 0
-        self.contentOcclusionWidth = masksTabContentUnderActionLane ? actionLaneWidth : 0
+        let contentOcclusionWidth = masksTabContentUnderActionLane
+            ? TabBarStyling.splitButtonContentOcclusionWidth(
+                visibleLaneWidth: actionLaneWidth,
+                contentOcclusionFraction: effect.contentOcclusionFraction
+            )
+            : 0
+        self.contentOcclusionWidth = contentOcclusionWidth
         self.backdropFadeWidth = max(0, effect.fadeWidth)
         self.backdropSolidWidth = TabBarStyling.splitButtonBackdropSolidSurfaceWidth(
             effectSolidWidth: effect.solidWidth,
-            visibleLaneWidth: actionLaneWidth,
+            contentOcclusionWidth: contentOcclusionWidth,
             contentFadeWidth: contentFadeWidth
         )
         self.backdropFadeRampStartFraction = min(max(0, effect.fadeRampStartFraction), 0.95)
