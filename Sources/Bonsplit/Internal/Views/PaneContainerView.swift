@@ -351,6 +351,9 @@ struct UnifiedPaneDropDelegate: DropDelegate {
 
     private func effectiveZone(for info: DropInfo) -> DropZone {
         let defaultZone = zoneForLocation(info.location)
+        guard !isFileDropOnly(info) else {
+            return defaultZone
+        }
         guard let draggedTab = controller.activeDragTab ?? controller.draggingTab,
               let sourcePaneId = controller.activeDragSourcePaneId ?? controller.dragSourcePaneId else {
             return defaultZone
@@ -404,32 +407,75 @@ struct UnifiedPaneDropDelegate: DropDelegate {
         )
 #endif
 
-        // Read from non-observable drag state — @Observable writes from createItemProvider
-        // may not have propagated yet when performDrop runs.
-        guard let draggedTab = controller.activeDragTab ?? controller.draggingTab,
-              let sourcePaneId = controller.activeDragSourcePaneId ?? controller.dragSourcePaneId else {
-            if info.hasItemsConforming(to: [.tabTransfer]) {
-                guard let transfer = decodeTransfer(from: info),
-                      transfer.isFromCurrentProcess,
-                      let destination = destination(for: zone) else {
-                    return false
-                }
+        let hasTabTransfer = info.hasItemsConforming(to: [.tabTransfer])
+        let hasFileURL = info.hasItemsConforming(to: [.fileURL])
 
-                let request = BonsplitController.ExternalTabDropRequest(
-                    tabId: TabID(id: transfer.tab.id),
-                    sourcePaneId: PaneID(id: transfer.sourcePaneId),
-                    destination: destination
-                )
-                let handled = bonsplitController.onExternalTabDrop?(request) ?? false
-                if handled {
-                    dropLifecycle = .idle
-                    activeDropZone = nil
+        // Read from non-observable drag state. @Observable writes from createItemProvider
+        // may not have propagated yet when performDrop runs.
+        if Self.shouldUseLocalTabDrag(
+            hasTabTransfer: hasTabTransfer,
+            hasFileURL: hasFileURL,
+            hasLocalTabDrag: controller.activeDragTab != nil || controller.draggingTab != nil
+        ),
+           let draggedTab = controller.activeDragTab ?? controller.draggingTab,
+           let sourcePaneId = controller.activeDragSourcePaneId ?? controller.dragSourcePaneId {
+            // Clear both observable and non-observable drag state.
+            dropLifecycle = .idle
+            activeDropZone = nil
+            controller.draggingTab = nil
+            controller.dragSourcePaneId = nil
+            controller.activeDragTab = nil
+            controller.activeDragSourcePaneId = nil
+
+            if zone == .center {
+                if sourcePaneId != pane.id {
+                    withTransaction(Transaction(animation: nil)) {
+                        _ = bonsplitController.moveTab(
+                            TabID(id: draggedTab.id),
+                            toPane: pane.id,
+                            atIndex: nil
+                        )
+                    }
                 }
-                return handled
+            } else if let orientation = zone.orientation {
+#if DEBUG
+                dlog(
+                    "pane.drop.splitRequest targetPane=\(pane.id.id.uuidString.prefix(5)) " +
+                    "sourcePane=\(sourcePaneId.id.uuidString.prefix(5)) zone=\(zone) " +
+                    "orientation=\(orientation) insertFirst=\(zone.insertsFirst ? 1 : 0) " +
+                    "draggedTab=\(draggedTab.id.uuidString.prefix(5))"
+                )
+#endif
+                let newPaneId = bonsplitController.splitPane(
+                    pane.id,
+                    orientation: orientation,
+                    movingTab: TabID(id: draggedTab.id),
+                    insertFirst: zone.insertsFirst
+                )
+#if DEBUG
+                dlog(
+                    "pane.drop.splitResult targetPane=\(pane.id.id.uuidString.prefix(5)) " +
+                    "newPane=\(newPaneId?.id.uuidString.prefix(5) ?? "nil")"
+                )
+#endif
             }
 
-            guard info.hasItemsConforming(to: [.fileURL]) else { return false }
-            let handled = performFileDrop(info: info, zone: zone)
+            return true
+        }
+
+        if info.hasItemsConforming(to: [.tabTransfer]) {
+            guard let transfer = decodeTransfer(from: info),
+                  transfer.isFromCurrentProcess,
+                  let destination = destination(for: zone) else {
+                return false
+            }
+
+            let request = BonsplitController.ExternalTabDropRequest(
+                tabId: TabID(id: transfer.tab.id),
+                sourcePaneId: PaneID(id: transfer.sourcePaneId),
+                destination: destination
+            )
+            let handled = bonsplitController.onExternalTabDrop?(request) ?? false
             if handled {
                 dropLifecycle = .idle
                 activeDropZone = nil
@@ -437,48 +483,13 @@ struct UnifiedPaneDropDelegate: DropDelegate {
             return handled
         }
 
-        // Clear both observable and non-observable drag state.
-        dropLifecycle = .idle
-        activeDropZone = nil
-        controller.draggingTab = nil
-        controller.dragSourcePaneId = nil
-        controller.activeDragTab = nil
-        controller.activeDragSourcePaneId = nil
-
-        if zone == .center {
-            if sourcePaneId != pane.id {
-                withTransaction(Transaction(animation: nil)) {
-                    _ = bonsplitController.moveTab(
-                        TabID(id: draggedTab.id),
-                        toPane: pane.id,
-                        atIndex: nil
-                    )
-                }
-            }
-        } else if let orientation = zone.orientation {
-#if DEBUG
-            dlog(
-                "pane.drop.splitRequest targetPane=\(pane.id.id.uuidString.prefix(5)) " +
-                "sourcePane=\(sourcePaneId.id.uuidString.prefix(5)) zone=\(zone) " +
-                "orientation=\(orientation) insertFirst=\(zone.insertsFirst ? 1 : 0) " +
-                "draggedTab=\(draggedTab.id.uuidString.prefix(5))"
-            )
-#endif
-            let newPaneId = bonsplitController.splitPane(
-                pane.id,
-                orientation: orientation,
-                movingTab: TabID(id: draggedTab.id),
-                insertFirst: zone.insertsFirst
-            )
-#if DEBUG
-            dlog(
-                "pane.drop.splitResult targetPane=\(pane.id.id.uuidString.prefix(5)) " +
-                "newPane=\(newPaneId?.id.uuidString.prefix(5) ?? "nil")"
-            )
-#endif
+        guard info.hasItemsConforming(to: [.fileURL]) else { return false }
+        let handled = performFileDrop(info: info, zone: zone)
+        if handled {
+            dropLifecycle = .idle
+            activeDropZone = nil
         }
-
-        return true
+        return handled
     }
 
     func dropEntered(info: DropInfo) {
@@ -542,23 +553,21 @@ struct UnifiedPaneDropDelegate: DropDelegate {
         let hasFileURL = info.hasItemsConforming(to: [.fileURL])
         guard hasTabTransfer || hasFileURL else { return false }
 
-        // Local drags use in-memory state and are always same-process.
-        if controller.activeDragTab != nil || controller.draggingTab != nil {
-            return true
-        }
-
-        if hasTabTransfer {
-            // External drags (another Bonsplit controller) must include a payload from this process.
-            guard let transfer = decodeTransfer(from: info),
-                  transfer.isFromCurrentProcess else {
-                return false
-            }
-        } else if hasFileURL {
+        if Self.isFileDropOnly(hasTabTransfer: hasTabTransfer, hasFileURL: hasFileURL) {
             guard Self.acceptsFileDrop(
                 zone: effectiveZone(for: info),
                 hasExternalFileDropHandler: bonsplitController.onExternalFileDrop != nil,
                 hasLegacyFileDropHandler: controller.onFileDrop != nil
-            ) else {
+            ), Self.hasReadableFileURLs() else {
+                return false
+            }
+        } else if controller.activeDragTab != nil || controller.draggingTab != nil {
+            // Local tab drags use in-memory state and are always same-process.
+            return true
+        } else if hasTabTransfer {
+            // External drags (another Bonsplit controller) must include a payload from this process.
+            guard let transfer = decodeTransfer(from: info),
+                  transfer.isFromCurrentProcess else {
                 return false
             }
         }
@@ -612,7 +621,22 @@ struct UnifiedPaneDropDelegate: DropDelegate {
     }
 
     private func isFileDropOnly(_ info: DropInfo) -> Bool {
-        info.hasItemsConforming(to: [.fileURL]) && !info.hasItemsConforming(to: [.tabTransfer])
+        Self.isFileDropOnly(
+            hasTabTransfer: info.hasItemsConforming(to: [.tabTransfer]),
+            hasFileURL: info.hasItemsConforming(to: [.fileURL])
+        )
+    }
+
+    static func isFileDropOnly(hasTabTransfer: Bool, hasFileURL: Bool) -> Bool {
+        hasFileURL && !hasTabTransfer
+    }
+
+    static func shouldUseLocalTabDrag(
+        hasTabTransfer: Bool,
+        hasFileURL: Bool,
+        hasLocalTabDrag: Bool
+    ) -> Bool {
+        hasLocalTabDrag && !isFileDropOnly(hasTabTransfer: hasTabTransfer, hasFileURL: hasFileURL)
     }
 
     private func destination(
@@ -668,6 +692,10 @@ struct UnifiedPaneDropDelegate: DropDelegate {
             }
             return nil
         }
+    }
+
+    static func hasReadableFileURLs(from pasteboard: NSPasteboard = NSPasteboard(name: .drag)) -> Bool {
+        !fileURLs(from: pasteboard).isEmpty
     }
 
     private func decodeTransfer(from string: String) -> TabTransferData? {

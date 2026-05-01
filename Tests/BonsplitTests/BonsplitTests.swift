@@ -1736,6 +1736,48 @@ final class BonsplitTests: XCTestCase {
         XCTAssertEqual(UnifiedPaneDropDelegate.fileURLs(from: pasteboard), [fileURL])
     }
 
+    func testFileDropValidationRequiresReadablePasteboardURLs() throws {
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("bonsplit.file-drop.empty.\(UUID().uuidString)"))
+        pasteboard.clearContents()
+
+        XCTAssertFalse(UnifiedPaneDropDelegate.hasReadableFileURLs(from: pasteboard))
+
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("bonsplit-file-drop-readable-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let fileURL = directory.appendingPathComponent("sample.txt")
+        try "sample".write(to: fileURL, atomically: true, encoding: .utf8)
+
+        XCTAssertTrue(pasteboard.writeObjects([fileURL as NSURL]))
+        XCTAssertTrue(UnifiedPaneDropDelegate.hasReadableFileURLs(from: pasteboard))
+    }
+
+    func testFileOnlyDropsDoNotUseStaleLocalTabDragState() {
+        XCTAssertFalse(
+            UnifiedPaneDropDelegate.shouldUseLocalTabDrag(
+                hasTabTransfer: false,
+                hasFileURL: true,
+                hasLocalTabDrag: true
+            )
+        )
+        XCTAssertTrue(
+            UnifiedPaneDropDelegate.shouldUseLocalTabDrag(
+                hasTabTransfer: true,
+                hasFileURL: false,
+                hasLocalTabDrag: true
+            )
+        )
+        XCTAssertFalse(
+            UnifiedPaneDropDelegate.shouldUseLocalTabDrag(
+                hasTabTransfer: true,
+                hasFileURL: false,
+                hasLocalTabDrag: false
+            )
+        )
+    }
+
     func testSelectedTabNeverShowsHoverBackground() {
         XCTAssertFalse(
             TabItemStyling.shouldShowHoverBackground(isHovered: true, isSelected: true)
