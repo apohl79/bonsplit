@@ -1666,6 +1666,16 @@ final class BonsplitTests: XCTestCase {
         XCTAssertLessThan(brightnesses.trailing, 0.08)
     }
 
+    @MainActor
+    func testSharedBackdropManySplitButtonsPaintsActionLaneSurface() {
+        guard let alpha = renderedSharedBackdropActionLaneSurfaceAlpha() else {
+            XCTFail("Expected rendered shared backdrop action lane color")
+            return
+        }
+
+        XCTAssertGreaterThan(alpha, 0.2)
+    }
+
     func testTabBarSeparatorSegmentsClampGapIntoBounds() {
         var segments = TabBarStyling.separatorSegments(totalWidth: 100, gap: -20...40)
         XCTAssertEqual(segments.left, 0, accuracy: 0.0001)
@@ -2527,6 +2537,71 @@ final class BonsplitTests: XCTestCase {
             return (
                 leading: brightness(of: leading),
                 trailing: brightness(of: trailing)
+            )
+        }
+    }
+
+    @MainActor
+    private func renderedSharedBackdropActionLaneSurfaceAlpha() -> CGFloat? {
+        let buttonCount = 28
+        let size = NSSize(width: 360, height: 28)
+        let splitButtonLaneWidth = visibleSplitButtonLaneWidth(size: size, buttonCount: buttonCount)
+        let appearance = BonsplitConfiguration.Appearance(
+            tabBarHeight: size.height,
+            splitButtons: manySplitActionButtons(count: buttonCount),
+            splitButtonBackdropEffect: .init(
+                style: .translucentChrome,
+                fadeWidth: 99.75,
+                contentFadeWidth: 28.875,
+                solidWidth: 23.875,
+                fadeRampStartFraction: 0.60,
+                leadingOpacity: 0,
+                trailingOpacity: 0.8625,
+                contentOcclusionFraction: 0.6875,
+                masksTabContent: true
+            ),
+            chromeColors: .init(
+                backgroundHex: "#242424B8",
+                tabBarBackgroundHex: "#00000000",
+                splitButtonBackdropHex: "#00000000",
+                paneBackgroundHex: "#00000000",
+                borderHex: "#66666680"
+            ),
+            usesSharedBackdrop: true
+        )
+
+        return renderedTabBarValue(
+            isFocused: true,
+            appearance: appearance,
+            showSplitButtons: true,
+            size: size,
+            configurePane: { pane in
+                let selected = TabItem(
+                    title: "selected tab title that reaches under the full action button lane",
+                    icon: nil
+                )
+                pane.tabs = [selected]
+                pane.selectedTabId = selected.id
+            }
+        ) { hostingView in
+            let laneStartX = size.width - splitButtonLaneWidth
+            guard let color = renderedColorInViewCoordinates(
+                in: hostingView,
+                at: NSPoint(x: laneStartX + 6, y: 6)
+            )?.usingColorSpace(.sRGB) else {
+                return nil
+            }
+            return color.alphaComponent
+        }
+    }
+
+    private func manySplitActionButtons(count: Int) -> [BonsplitConfiguration.SplitActionButton] {
+        (0..<count).map { index in
+            BonsplitConfiguration.SplitActionButton(
+                id: "many-action-\(index)",
+                icon: .systemImage("terminal"),
+                tooltip: "Action \(index)",
+                action: .custom("many-action-\(index)")
             )
         }
     }
