@@ -193,6 +193,7 @@ private final class TabBarScrollViewBridge: ObservableObject {
 }
 
 enum TabBarStyling {
+    static let maximumSplitButtonLaneWidthFraction: CGFloat = 0.25
     static let splitActionButtonReservedWidth: CGFloat = 22
     static let splitButtonsSpacing: CGFloat = 4
     static let splitButtonsLeadingPadding: CGFloat = 6
@@ -297,6 +298,7 @@ enum TabBarStyling {
 
 struct TabBarLayout: Equatable {
     let barHeight: CGFloat
+    let availableWidth: CGFloat
     let splitButtonCount: Int
     let splitButtonLaneVisible: Bool
     let reservesSplitButtonLane: Bool
@@ -304,12 +306,14 @@ struct TabBarLayout: Equatable {
 
     init(
         tabBarHeight: CGFloat,
+        availableWidth: CGFloat = 0,
         splitButtonCount: Int,
         splitButtonLaneVisible: Bool,
         reservesSplitButtonLane: Bool,
         measuredSplitButtonLaneWidth: CGFloat = 0
     ) {
         self.barHeight = max(1, tabBarHeight)
+        self.availableWidth = max(0, availableWidth)
         self.splitButtonCount = max(0, splitButtonCount)
         self.splitButtonLaneVisible = splitButtonLaneVisible
         self.reservesSplitButtonLane = reservesSplitButtonLane
@@ -326,8 +330,17 @@ struct TabBarLayout: Equatable {
         max(minimumSplitButtonLaneWidth, measuredSplitButtonLaneWidth)
     }
 
+    var maximumSplitButtonLaneWidth: CGFloat {
+        guard availableWidth > 0 else { return fullSplitButtonLaneWidth }
+        return availableWidth * TabBarStyling.maximumSplitButtonLaneWidthFraction
+    }
+
+    var visibleSplitButtonLaneWidth: CGFloat {
+        min(fullSplitButtonLaneWidth, maximumSplitButtonLaneWidth)
+    }
+
     var trailingTabContentInset: CGFloat {
-        reservesSplitButtonLane ? fullSplitButtonLaneWidth : 0
+        reservesSplitButtonLane ? visibleSplitButtonLaneWidth : 0
     }
 
     var splitActionButtonHeight: CGFloat {
@@ -449,6 +462,7 @@ struct TabBarView: View {
     private var tabBarLayout: TabBarLayout {
         TabBarLayout(
             tabBarHeight: appearance.tabBarHeight,
+            availableWidth: containerWidth,
             splitButtonCount: visibleSplitButtons.count,
             splitButtonLaneVisible: shouldShowSplitButtons,
             reservesSplitButtonLane: showSplitButtons && !isMinimalMode,
@@ -501,7 +515,7 @@ struct TabBarView: View {
     }
 
     private var splitButtonsBackdropWidth: CGFloat {
-        tabBarLayout.fullSplitButtonLaneWidth
+        tabBarLayout.visibleSplitButtonLaneWidth
     }
 
     private var splitButtonBackdropFadeWidth: CGFloat {
@@ -690,8 +704,6 @@ struct TabBarView: View {
                     if shouldRenderSplitButtons {
                         splitButtons
                             .saturation(tabBarSaturation)
-                            .background(SplitButtonLaneWidthReader())
-                            .frame(width: splitButtonsBackdropWidth, height: tabBarHeight, alignment: .trailing)
                             .opacity(shouldShowSplitButtons ? 1 : 0)
                             .allowsHitTesting(shouldShowSplitButtons)
                             .animation(.easeInOut(duration: 0.14), value: shouldShowSplitButtons)
@@ -1014,6 +1026,18 @@ struct TabBarView: View {
 
     @ViewBuilder
     private var splitButtons: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            splitButtonRow
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(minWidth: splitButtonsBackdropWidth, alignment: .trailing)
+                .background(SplitButtonLaneWidthReader())
+        }
+        .frame(width: splitButtonsBackdropWidth, height: tabBarHeight, alignment: .trailing)
+        .clipped()
+    }
+
+    @ViewBuilder
+    private var splitButtonRow: some View {
         let tooltips = controller.configuration.appearance.splitButtonTooltips
         let buttons = visibleSplitButtons
         HStack(spacing: TabBarStyling.splitButtonsSpacing) {
