@@ -214,9 +214,11 @@ enum TabBarStyling {
 
     static func splitButtonBackdropSolidSurfaceWidth(
         effectSolidWidth: CGFloat,
-        visibleLaneWidth: CGFloat
+        visibleLaneWidth: CGFloat,
+        contentFadeWidth: CGFloat
     ) -> CGFloat {
-        max(max(0, effectSolidWidth), max(0, visibleLaneWidth))
+        let controlSurfaceWidth = max(0, visibleLaneWidth) + max(0, contentFadeWidth)
+        return max(max(0, effectSolidWidth), controlSurfaceWidth)
     }
 
     static func splitButtonScrollAffordances(
@@ -549,7 +551,8 @@ struct TabBarView: View {
     private var splitButtonBackdropSolidWidth: CGFloat {
         TabBarStyling.splitButtonBackdropSolidSurfaceWidth(
             effectSolidWidth: splitButtonBackdropEffect.solidWidth,
-            visibleLaneWidth: splitButtonsBackdropWidth
+            visibleLaneWidth: splitButtonsBackdropWidth,
+            contentFadeWidth: splitButtonContentFadeWidth
         )
     }
 
