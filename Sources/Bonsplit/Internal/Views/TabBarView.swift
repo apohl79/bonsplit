@@ -432,12 +432,17 @@ struct TabBarActionLaneGeometry: Equatable {
     ) {
         self.buttonViewportWidth = layout.visibleSplitButtonLaneWidth
         self.contentFadeWidth = masksTabContent ? effect.contentFadeWidth : 0
-        self.contentOcclusionWidth = masksTabContent
-            ? TabBarStyling.splitButtonContentOcclusionWidth(
+        if masksTabContent {
+            let fractionalOcclusionWidth = TabBarStyling.splitButtonContentOcclusionWidth(
                 visibleLaneWidth: layout.visibleSplitButtonLaneWidth,
                 contentOcclusionFraction: effect.contentOcclusionFraction
             )
-            : 0
+            self.contentOcclusionWidth = layout.splitButtonLaneOverflowsViewport
+                ? layout.visibleSplitButtonLaneWidth
+                : fractionalOcclusionWidth
+        } else {
+            self.contentOcclusionWidth = 0
+        }
         self.backgroundFadeWidth = max(0, effect.fadeWidth)
         let solidSurfaceWidthAdjustment = layout.splitButtonLaneOverflowsViewport
             ? max(0, effect.solidSurfaceWidthAdjustment)
@@ -449,9 +454,7 @@ struct TabBarActionLaneGeometry: Equatable {
         )
         let rampStart = min(max(0, effect.fadeRampStartFraction), 0.95)
         self.backgroundFadeRampStartFraction = rampStart
-        let defaultSeparatorFadeWidth = masksTabContent
-            ? self.contentFadeWidth
-            : self.backgroundFadeWidth * (1 - rampStart)
+        let defaultSeparatorFadeWidth = self.backgroundFadeWidth
         self.separatorFadeWidth = min(
             defaultSeparatorFadeWidth,
             effect.separatorFadeWidth ?? defaultSeparatorFadeWidth
@@ -1021,6 +1024,12 @@ struct TabBarView: View {
         .overlay(maskedTabBarBottomSeparatorChrome)
         .overlay(alignment: .trailing) {
             splitButtonChrome
+                .frame(width: splitButtonsBackdropWidth, height: tabBarHeight, alignment: .trailing)
+                .mask {
+                    Rectangle()
+                        .frame(width: splitButtonsBackdropWidth, height: tabBarHeight)
+                }
+                .clipped()
         }
         .background(TabBarDragAndHoverView(
             isMinimalMode: isMinimalMode,
@@ -1431,12 +1440,14 @@ struct TabBarView: View {
     }
 
     @ViewBuilder
-    private func splitButtonSeparatorFadeSegment(snapshot _: TabBarChromeSnapshot) -> some View {
+    private func splitButtonSeparatorFadeSegment(snapshot: TabBarChromeSnapshot) -> some View {
         let separator = TabBarColors.separator(for: appearance)
+        let rampStart = snapshot.backdropFadeRampStartFraction
         LinearGradient(
-            colors: [
-                separator.opacity(0),
-                separator
+            stops: [
+                .init(color: separator.opacity(0), location: 0),
+                .init(color: separator.opacity(0), location: rampStart),
+                .init(color: separator, location: 1)
             ],
             startPoint: .leading,
             endPoint: .trailing
@@ -1445,41 +1456,49 @@ struct TabBarView: View {
 
     @ViewBuilder
     private var splitButtons: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            splitButtonRow
-                .fixedSize(horizontal: true, vertical: false)
-                .frame(minWidth: splitButtonsBackdropWidth, alignment: .trailing)
-                .background(SplitButtonLaneWidthReader())
-                .background(
-                    GeometryReader { contentGeo in
-                        Color.clear
-                            .onChange(
-                                of: contentGeo.frame(in: .named(splitButtonScrollCoordinateSpaceName))
-                            ) { _, newFrame in
-                                updateSplitButtonScrollContent(frame: newFrame)
-                            }
-                            .onAppear {
-                                updateSplitButtonScrollContent(
-                                    frame: contentGeo.frame(in: .named(splitButtonScrollCoordinateSpaceName))
-                                )
-                            }
-                    }
-                )
-        }
-        .coordinateSpace(name: splitButtonScrollCoordinateSpaceName)
-        .frame(width: splitButtonsBackdropWidth, height: tabBarHeight, alignment: .trailing)
-        .background(
-            GeometryReader { viewportGeo in
-                Color.clear
-                    .onChange(of: viewportGeo.size.width) { _, newWidth in
-                        splitButtonViewportWidth = newWidth
-                    }
-                    .onAppear {
-                        splitButtonViewportWidth = viewportGeo.size.width
-                    }
+        let laneWidth = splitButtonsBackdropWidth
+        ZStack(alignment: .trailing) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                splitButtonRow
+                    .fixedSize(horizontal: true, vertical: false)
+                    .frame(minWidth: laneWidth, alignment: .trailing)
+                    .background(SplitButtonLaneWidthReader())
+                    .background(
+                        GeometryReader { contentGeo in
+                            Color.clear
+                                .onChange(
+                                    of: contentGeo.frame(in: .named(splitButtonScrollCoordinateSpaceName))
+                                ) { _, newFrame in
+                                    updateSplitButtonScrollContent(frame: newFrame)
+                                }
+                                .onAppear {
+                                    updateSplitButtonScrollContent(
+                                        frame: contentGeo.frame(in: .named(splitButtonScrollCoordinateSpaceName))
+                                    )
+                                }
+                        }
+                    )
             }
-        )
-        .mask(splitButtonScrollMask)
+            .coordinateSpace(name: splitButtonScrollCoordinateSpaceName)
+            .frame(width: laneWidth, height: tabBarHeight, alignment: .trailing)
+            .background(
+                GeometryReader { viewportGeo in
+                    Color.clear
+                        .onChange(of: viewportGeo.size.width) { _, newWidth in
+                            splitButtonViewportWidth = newWidth
+                        }
+                        .onAppear {
+                            splitButtonViewportWidth = viewportGeo.size.width
+                        }
+                }
+            )
+            .mask(
+                splitButtonScrollMask
+                    .frame(width: laneWidth, height: tabBarHeight)
+            )
+        }
+        .frame(width: laneWidth, height: tabBarHeight, alignment: .trailing)
+        .contentShape(Rectangle())
         .clipped()
     }
 
