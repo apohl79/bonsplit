@@ -442,23 +442,21 @@ final class BonsplitTests: XCTestCase {
             TabBarStyling.splitButtonBackdropSolidSurfaceWidth(
                 effectSolidWidth: 2,
                 visibleLaneWidth: 90,
-                contentOcclusionWidth: 60,
-                contentFadeWidth: 42
+                solidSurfaceWidthAdjustment: 0
             ),
-            132
+            90
         )
         XCTAssertEqual(
             TabBarStyling.splitButtonBackdropSolidSurfaceWidth(
                 effectSolidWidth: 96,
                 visibleLaneWidth: 72,
-                contentOcclusionWidth: 60,
-                contentFadeWidth: 24
+                solidSurfaceWidthAdjustment: 0
             ),
             96
         )
     }
 
-    func testSplitButtonContentOcclusionFractionLimitsSolidSurface() {
+    func testSplitButtonContentOcclusionFractionDoesNotChangeSolidSurface() {
         let occlusion = TabBarStyling.splitButtonContentOcclusionWidth(
             visibleLaneWidth: 200,
             contentOcclusionFraction: 0.25
@@ -469,10 +467,28 @@ final class BonsplitTests: XCTestCase {
             TabBarStyling.splitButtonBackdropSolidSurfaceWidth(
                 effectSolidWidth: 2,
                 visibleLaneWidth: 200,
-                contentOcclusionWidth: occlusion,
-                contentFadeWidth: 24
+                solidSurfaceWidthAdjustment: 0
             ),
-            224
+            200
+        )
+    }
+
+    func testSplitButtonBackdropSolidSurfaceWidthCanBeAdjusted() {
+        XCTAssertEqual(
+            TabBarStyling.splitButtonBackdropSolidSurfaceWidth(
+                effectSolidWidth: 2,
+                visibleLaneWidth: 90,
+                solidSurfaceWidthAdjustment: 12
+            ),
+            102
+        )
+        XCTAssertEqual(
+            TabBarStyling.splitButtonBackdropSolidSurfaceWidth(
+                effectSolidWidth: 2,
+                visibleLaneWidth: 90,
+                solidSurfaceWidthAdjustment: -12
+            ),
+            78
         )
     }
 
@@ -874,6 +890,7 @@ final class BonsplitTests: XCTestCase {
             fadeWidth: 80,
             contentFadeWidth: 42,
             solidWidth: 32,
+            solidSurfaceWidthAdjustment: 7,
             fadeRampStartFraction: 0.58,
             contentOcclusionFraction: 0.25
         )
@@ -881,15 +898,18 @@ final class BonsplitTests: XCTestCase {
         XCTAssertEqual(effect.fadeWidth, 80)
         XCTAssertEqual(effect.contentFadeWidth, 42)
         XCTAssertEqual(effect.solidWidth, 32)
+        XCTAssertEqual(effect.solidSurfaceWidthAdjustment, 7)
         XCTAssertNil(effect.separatorFadeWidth)
         XCTAssertEqual(effect.fadeRampStartFraction, 0.58)
         XCTAssertEqual(effect.contentOcclusionFraction, 0.25)
 
         let clamped = BonsplitConfiguration.Appearance.SplitButtonBackdropEffect(
+            solidSurfaceWidthAdjustment: .infinity,
             separatorFadeWidth: -4,
             fadeRampStartFraction: 1.4,
             contentOcclusionFraction: 2.2
         )
+        XCTAssertEqual(clamped.solidSurfaceWidthAdjustment, 0)
         XCTAssertEqual(clamped.separatorFadeWidth, 0)
         XCTAssertEqual(clamped.fadeRampStartFraction, 0.95)
         XCTAssertEqual(clamped.contentOcclusionFraction, 1.0)
@@ -1706,13 +1726,13 @@ final class BonsplitTests: XCTestCase {
     }
 
     @MainActor
-    func testSplitButtonBackdropSolidSurfaceCoversTabContentFadeStart() {
+    func testSplitButtonBackdropDoesNotPaintSolidSurfaceAtTabContentFadeStart() {
         guard let brightness = renderedSplitButtonContentFadeStartBackdropBrightness() else {
             XCTFail("Expected rendered split button content fade backdrop color")
             return
         }
 
-        XCTAssertGreaterThan(brightness, 0.5)
+        XCTAssertLessThan(brightness, 0.1)
     }
 
     @MainActor
@@ -1797,7 +1817,7 @@ final class BonsplitTests: XCTestCase {
 
         XCTAssertEqual(snapshot.actionLaneSeparatorFadeWidth, snapshot.contentFadeWidth, accuracy: 0.0001)
         XCTAssertEqual(snapshot.actionLaneSeparatorSolidWidth, snapshot.actionLaneWidth, accuracy: 0.0001)
-        XCTAssertEqual(snapshot.backdropSolidWidth, snapshot.actionLaneWidth + snapshot.contentFadeWidth, accuracy: 0.0001)
+        XCTAssertEqual(snapshot.backdropSolidWidth, snapshot.actionLaneWidth, accuracy: 0.0001)
         XCTAssertEqual(
             snapshot.actionLaneSeparatorFadeWidth + snapshot.actionLaneSeparatorSolidWidth,
             snapshot.contentFadeWidth + snapshot.actionLaneWidth,
@@ -1832,6 +1852,44 @@ final class BonsplitTests: XCTestCase {
         XCTAssertEqual(snapshot.contentFadeWidth, 28.875, accuracy: 0.0001)
         XCTAssertEqual(snapshot.actionLaneSeparatorFadeWidth, 12, accuracy: 0.0001)
         XCTAssertLessThan(snapshot.actionLaneSeparatorFadeWidth, snapshot.contentFadeWidth)
+    }
+
+    func testActionLaneFallbackSeparatorClipsToSelectedSeparatorGap() {
+        let buttonCount = 28
+        let size = NSSize(width: 360, height: 28)
+        let layout = TabBarLayout(
+            tabBarHeight: size.height,
+            availableWidth: size.width,
+            splitButtonCount: buttonCount,
+            splitButtonLaneVisible: true,
+            reservesSplitButtonLane: true,
+            measuredSplitButtonLaneWidth: TabBarStyling.splitButtonsBackdropWidth(buttonCount: buttonCount)
+        )
+        let snapshot = TabBarChromeSnapshot(
+            appearance: sharedBackdropManyActionAppearance(
+                tabBarHeight: size.height,
+                buttonCount: buttonCount,
+                separatorFadeWidth: 12
+            ),
+            layout: layout,
+            isFocused: true,
+            shouldShowSplitButtons: true,
+            fadeColorStyle: 0
+        )
+        let geometry = snapshot.actionLaneGeometry
+        let mask = geometry.fallbackSeparatorMaskFrame(
+            totalWidth: size.width,
+            height: size.height,
+            selectedSeparatorGap: 300...340
+        )
+
+        XCTAssertEqual(mask?.minX ?? -1, 300, accuracy: 0.0001)
+        XCTAssertEqual(mask?.maxX ?? -1, 340, accuracy: 0.0001)
+        XCTAssertNil(geometry.fallbackSeparatorMaskFrame(
+            totalWidth: size.width,
+            height: size.height,
+            selectedSeparatorGap: 0...40
+        ))
     }
 
     func testTabBarSeparatorSegmentsClampGapIntoBounds() {
