@@ -1219,6 +1219,30 @@ final class BonsplitTests: XCTestCase {
     }
 
     @MainActor
+    func testSplitPaneWithInsertSideUsesInitialDividerPosition() {
+        let controller = BonsplitController()
+        _ = controller.createTab(title: "Base")
+        let sourcePaneId = controller.focusedPaneId!
+        let customTab = Bonsplit.Tab(title: "Custom")
+
+        guard controller.splitPane(
+            sourcePaneId,
+            orientation: .vertical,
+            withTab: customTab,
+            insertFirst: false,
+            initialDividerPosition: 0.875
+        ) != nil else {
+            return XCTFail("Expected splitPane(insertFirst:) to return new pane")
+        }
+
+        guard case .split(let split) = controller.treeSnapshot() else {
+            return XCTFail("Expected splitPane(insertFirst:) to create a split")
+        }
+        XCTAssertEqual(split.orientation, "vertical")
+        XCTAssertEqual(split.dividerPosition, 0.875, accuracy: 0.000_1)
+    }
+
+    @MainActor
     func testTogglePaneZoomTracksState() {
         let controller = BonsplitController()
         guard let originalPane = controller.focusedPaneId else {

@@ -186,14 +186,21 @@ final class SplitViewController {
     }
 
     /// Split a pane with a specific tab, optionally inserting the new pane first
-    func splitPaneWithTab(_ paneId: PaneID, orientation: SplitOrientation, tab: TabItem, insertFirst: Bool) {
+    func splitPaneWithTab(
+        _ paneId: PaneID,
+        orientation: SplitOrientation,
+        tab: TabItem,
+        insertFirst: Bool,
+        initialDividerPosition: CGFloat? = nil
+    ) {
         clearPaneZoom()
         rootNode = splitNodeWithTabRecursively(
             node: rootNode,
             targetPaneId: paneId,
             orientation: orientation,
             tab: tab,
-            insertFirst: insertFirst
+            insertFirst: insertFirst,
+            initialDividerPosition: initialDividerPosition
         )
     }
 
@@ -202,13 +209,15 @@ final class SplitViewController {
         targetPaneId: PaneID,
         orientation: SplitOrientation,
         tab: TabItem,
-        insertFirst: Bool
+        insertFirst: Bool,
+        initialDividerPosition: CGFloat?
     ) -> SplitNode {
         switch node {
         case .pane(let paneState):
             if paneState.id == targetPaneId {
                 // Create new pane with the tab
                 let newPane = PaneState(tabs: [tab])
+                let dividerPosition = initialDividerPosition.map { min(max($0, 0.1), 0.9) } ?? 0.5
 
                 // Start with divider at the edge so there's no flash before animation
                 let splitState: SplitState
@@ -218,7 +227,7 @@ final class SplitViewController {
                         orientation: orientation,
                         first: .pane(newPane),
                         second: .pane(paneState),
-                        dividerPosition: 0.5,
+                        dividerPosition: dividerPosition,
                         animationOrigin: .fromFirst
                     )
                 } else {
@@ -227,7 +236,7 @@ final class SplitViewController {
                         orientation: orientation,
                         first: .pane(paneState),
                         second: .pane(newPane),
-                        dividerPosition: 0.5,
+                        dividerPosition: dividerPosition,
                         animationOrigin: .fromSecond
                     )
                 }
@@ -245,14 +254,16 @@ final class SplitViewController {
                 targetPaneId: targetPaneId,
                 orientation: orientation,
                 tab: tab,
-                insertFirst: insertFirst
+                insertFirst: insertFirst,
+                initialDividerPosition: initialDividerPosition
             )
             splitState.second = splitNodeWithTabRecursively(
                 node: splitState.second,
                 targetPaneId: targetPaneId,
                 orientation: orientation,
                 tab: tab,
-                insertFirst: insertFirst
+                insertFirst: insertFirst,
+                initialDividerPosition: initialDividerPosition
             )
             return .split(splitState)
         }
