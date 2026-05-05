@@ -980,7 +980,7 @@ struct TabBarView: View {
                                 performNewTerminalSplitButtonAction()
                             }
                             .frame(width: trailing + 30, height: tabBarHeight)
-                            .onDrop(of: [.tabTransfer], delegate: TabDropDelegate(
+                            .onDrop(of: [.tabTransfer, .fileURL], delegate: TabDropDelegate(
                                 targetIndex: pane.tabs.count,
                                 pane: pane,
                                 bonsplitController: controller,
@@ -1162,7 +1162,7 @@ struct TabBarView: View {
         } preview: {
             TabDragPreview(tab: tab, appearance: appearance)
         }
-        .onDrop(of: [.tabTransfer], delegate: TabDropDelegate(
+        .onDrop(of: [.tabTransfer, .fileURL], delegate: TabDropDelegate(
             targetIndex: index,
             pane: pane,
             bonsplitController: controller,
@@ -1310,7 +1310,7 @@ struct TabBarView: View {
             performNewTerminalSplitButtonAction()
         }
         .frame(width: 30, height: tabBarHeight)
-        .onDrop(of: [.tabTransfer], delegate: TabDropDelegate(
+        .onDrop(of: [.tabTransfer, .fileURL], delegate: TabDropDelegate(
             targetIndex: pane.tabs.count,
             pane: pane,
             bonsplitController: controller,
@@ -3043,21 +3043,21 @@ struct TabDropDelegate: DropDelegate {
         // may not have propagated yet when performDrop runs.
         guard let draggedTab = controller.activeDragTab ?? controller.draggingTab,
               let sourcePaneId = controller.activeDragSourcePaneId ?? controller.dragSourcePaneId else {
-            guard let transfer = decodeTransfer(from: info),
-                  transfer.isFromCurrentProcess else {
-                return false
+            if let transfer = decodeTransfer(from: info),
+               transfer.isFromCurrentProcess {
+                let request = BonsplitController.ExternalTabDropRequest(
+                    tabId: TabID(id: transfer.tab.id),
+                    sourcePaneId: PaneID(id: transfer.sourcePaneId),
+                    destination: .insert(targetPane: pane.id, targetIndex: targetIndex)
+                )
+                let handled = bonsplitController.onExternalTabDrop?(request) ?? false
+                if handled {
+                    clearDropState()
+                }
+                return handled
             }
-            let request = BonsplitController.ExternalTabDropRequest(
-                tabId: TabID(id: transfer.tab.id),
-                sourcePaneId: PaneID(id: transfer.sourcePaneId),
-                destination: .insert(targetPane: pane.id, targetIndex: targetIndex)
-            )
-            let handled = bonsplitController.onExternalTabDrop?(request) ?? false
-            if handled {
-                dropLifecycle = .idle
-                dropTargetIndex = nil
-            }
-            return handled
+
+            return performFileDrop(info: info)
         }
 
         // Execute synchronously when possible so the dragged tab disappears immediately.
@@ -3086,8 +3086,7 @@ struct TabDropDelegate: DropDelegate {
         // Clear visual state immediately to prevent lingering indicators.
         // Must happen synchronously before returning, not in async callback.
         // Setting dropLifecycle to idle prevents dropUpdated from re-setting dropTargetIndex.
-        dropLifecycle = .idle
-        dropTargetIndex = nil
+        clearDropState()
         controller.draggingTab = nil
         controller.dragSourcePaneId = nil
         controller.activeDragTab = nil
@@ -3131,7 +3130,7 @@ struct TabDropDelegate: DropDelegate {
 #if DEBUG
             dlog("tab.dropUpdated.skip pane=\(pane.id.id.uuidString.prefix(5)) targetIndex=\(targetIndex) reason=lifecycle_idle")
 #endif
-            return DropProposal(operation: .move)
+            return DropProposal(operation: dropOperation(for: info))
         }
         // Only update if this is the active target, and suppress same-pane no-op indicators.
         if shouldSuppressIndicatorForNoopSamePaneDrop() {
@@ -3147,7 +3146,7 @@ struct TabDropDelegate: DropDelegate {
             "dropTarget=\(dropTargetIndex.map(String.init) ?? "nil")"
         )
 #endif
-        return DropProposal(operation: .move)
+        return DropProposal(operation: dropOperation(for: info))
     }
 
     func validateDrop(info: DropInfo) -> Bool {
@@ -3158,11 +3157,13 @@ struct TabDropDelegate: DropDelegate {
 #endif
             return false
         }
-        // The custom UTType alone is sufficient — only Bonsplit tab drags produce it.
-        // Do NOT gate on draggingTab != nil: @Observable changes from createItemProvider
-        // may not have propagated to the drop delegate yet, causing false rejections.
-        let hasType = info.hasItemsConforming(to: [.tabTransfer])
-        guard hasType else { return false }
+        let hasTabTransfer = info.hasItemsConforming(to: [.tabTransfer])
+        let hasFileURL = info.hasItemsConforming(to: [.fileURL])
+        guard hasTabTransfer || hasFileURL else { return false }
+
+        if hasFileURL, !hasTabTransfer {
+            return canHandleFileDrop(info: info)
+        }
 
         // Local drags use in-memory state and are always same-process.
         if controller.activeDragTab != nil || controller.draggingTab != nil {
@@ -3179,10 +3180,43 @@ struct TabDropDelegate: DropDelegate {
         let hasActive = controller.activeDragTab != nil
         dlog(
             "tab.validateDrop pane=\(pane.id.id.uuidString.prefix(5)) " +
-            "allowed=\(hasType ? 1 : 0) hasDrag=\(hasDrag ? 1 : 0) hasActive=\(hasActive ? 1 : 0)"
+            "allowed=\(hasTabTransfer ? 1 : 0) hasDrag=\(hasDrag ? 1 : 0) hasActive=\(hasActive ? 1 : 0)"
         )
 #endif
         return true
+    }
+
+    private func clearDropState() {
+        dropLifecycle = .idle
+        dropTargetIndex = nil
+    }
+
+    private func dropOperation(for info: DropInfo) -> DropOperation {
+        info.hasItemsConforming(to: [.fileURL]) && !info.hasItemsConforming(to: [.tabTransfer]) ? .copy : .move
+    }
+
+    private func canHandleFileDrop(info: DropInfo) -> Bool {
+        guard info.hasItemsConforming(to: [.fileURL]) else { return false }
+        guard bonsplitController.onExternalFileDrop != nil || controller.onFileDrop != nil else { return false }
+        return UnifiedPaneDropDelegate.hasReadableFileURLs()
+    }
+
+    private func performFileDrop(info: DropInfo) -> Bool {
+        guard canHandleFileDrop(info: info) else { return false }
+        let urls = UnifiedPaneDropDelegate.fileURLs(from: NSPasteboard(name: .drag))
+        guard !urls.isEmpty else { return false }
+
+        let destination: BonsplitController.ExternalTabDropRequest.Destination = .insert(
+            targetPane: pane.id,
+            targetIndex: targetIndex
+        )
+        let handled = bonsplitController.onExternalFileDrop?(
+            BonsplitController.ExternalFileDropRequest(urls: urls, destination: destination)
+        ) ?? controller.onFileDrop?(urls, pane.id) ?? false
+        if handled {
+            clearDropState()
+        }
+        return handled
     }
 
     private func shouldSuppressIndicatorForNoopSamePaneDrop() -> Bool {

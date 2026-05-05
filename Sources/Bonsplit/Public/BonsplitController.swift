@@ -393,7 +393,8 @@ public final class BonsplitController {
     public func splitPane(
         _ paneId: PaneID? = nil,
         orientation: SplitOrientation,
-        withTab tab: Tab? = nil
+        withTab tab: Tab? = nil,
+        initialDividerPosition: CGFloat? = nil
     ) -> PaneID? {
         guard configuration.allowSplits else { return nil }
 
@@ -427,7 +428,8 @@ public final class BonsplitController {
         internalController.splitPane(
             PaneID(id: targetPaneId.id),
             orientation: orientation,
-            with: internalTab
+            with: internalTab,
+            initialDividerPosition: initialDividerPosition
         )
 
         // Find new pane (will be focused after split)
@@ -457,7 +459,8 @@ public final class BonsplitController {
         _ paneId: PaneID? = nil,
         orientation: SplitOrientation,
         withTab tab: Tab,
-        insertFirst: Bool
+        insertFirst: Bool,
+        initialDividerPosition: CGFloat? = nil
     ) -> PaneID? {
         guard configuration.allowSplits else { return nil }
 
@@ -487,7 +490,8 @@ public final class BonsplitController {
             PaneID(id: targetPaneId.id),
             orientation: orientation,
             tab: internalTab,
-            insertFirst: insertFirst
+            insertFirst: insertFirst,
+            initialDividerPosition: initialDividerPosition
         )
 
         let newPaneId = focusedPaneId!
