@@ -122,13 +122,19 @@ final class SplitViewController {
     // MARK: - Split Operations
 
     /// Split the specified pane in the given orientation
-    func splitPane(_ paneId: PaneID, orientation: SplitOrientation, with newTab: TabItem? = nil) {
+    func splitPane(
+        _ paneId: PaneID,
+        orientation: SplitOrientation,
+        with newTab: TabItem? = nil,
+        initialDividerPosition: CGFloat? = nil
+    ) {
         clearPaneZoom()
         rootNode = splitNodeRecursively(
             node: rootNode,
             targetPaneId: paneId,
             orientation: orientation,
-            newTab: newTab
+            newTab: newTab,
+            initialDividerPosition: initialDividerPosition
         )
     }
 
@@ -136,7 +142,8 @@ final class SplitViewController {
         node: SplitNode,
         targetPaneId: PaneID,
         orientation: SplitOrientation,
-        newTab: TabItem?
+        newTab: TabItem?,
+        initialDividerPosition: CGFloat?
     ) -> SplitNode {
         switch node {
         case .pane(let paneState):
@@ -157,7 +164,7 @@ final class SplitViewController {
                     // Keep the model at its steady-state ratio. The view layer can still animate
                     // from an edge via animationOrigin, but the model should never represent a
                     // fully-collapsed pane (which can get stuck under view reparenting timing).
-                    dividerPosition: 0.5,
+                    dividerPosition: normalizedInitialDividerPosition(initialDividerPosition),
                     animationOrigin: .fromSecond  // New pane slides in from right/bottom
                 )
 
@@ -173,27 +180,36 @@ final class SplitViewController {
                 node: splitState.first,
                 targetPaneId: targetPaneId,
                 orientation: orientation,
-                newTab: newTab
+                newTab: newTab,
+                initialDividerPosition: initialDividerPosition
             )
             splitState.second = splitNodeRecursively(
                 node: splitState.second,
                 targetPaneId: targetPaneId,
                 orientation: orientation,
-                newTab: newTab
+                newTab: newTab,
+                initialDividerPosition: initialDividerPosition
             )
             return .split(splitState)
         }
     }
 
     /// Split a pane with a specific tab, optionally inserting the new pane first
-    func splitPaneWithTab(_ paneId: PaneID, orientation: SplitOrientation, tab: TabItem, insertFirst: Bool) {
+    func splitPaneWithTab(
+        _ paneId: PaneID,
+        orientation: SplitOrientation,
+        tab: TabItem,
+        insertFirst: Bool,
+        initialDividerPosition: CGFloat? = nil
+    ) {
         clearPaneZoom()
         rootNode = splitNodeWithTabRecursively(
             node: rootNode,
             targetPaneId: paneId,
             orientation: orientation,
             tab: tab,
-            insertFirst: insertFirst
+            insertFirst: insertFirst,
+            initialDividerPosition: initialDividerPosition
         )
     }
 
@@ -202,7 +218,8 @@ final class SplitViewController {
         targetPaneId: PaneID,
         orientation: SplitOrientation,
         tab: TabItem,
-        insertFirst: Bool
+        insertFirst: Bool,
+        initialDividerPosition: CGFloat?
     ) -> SplitNode {
         switch node {
         case .pane(let paneState):
@@ -218,7 +235,7 @@ final class SplitViewController {
                         orientation: orientation,
                         first: .pane(newPane),
                         second: .pane(paneState),
-                        dividerPosition: 0.5,
+                        dividerPosition: normalizedInitialDividerPosition(initialDividerPosition),
                         animationOrigin: .fromFirst
                     )
                 } else {
@@ -227,7 +244,7 @@ final class SplitViewController {
                         orientation: orientation,
                         first: .pane(paneState),
                         second: .pane(newPane),
-                        dividerPosition: 0.5,
+                        dividerPosition: normalizedInitialDividerPosition(initialDividerPosition),
                         animationOrigin: .fromSecond
                     )
                 }
@@ -245,17 +262,24 @@ final class SplitViewController {
                 targetPaneId: targetPaneId,
                 orientation: orientation,
                 tab: tab,
-                insertFirst: insertFirst
+                insertFirst: insertFirst,
+                initialDividerPosition: initialDividerPosition
             )
             splitState.second = splitNodeWithTabRecursively(
                 node: splitState.second,
                 targetPaneId: targetPaneId,
                 orientation: orientation,
                 tab: tab,
-                insertFirst: insertFirst
+                insertFirst: insertFirst,
+                initialDividerPosition: initialDividerPosition
             )
             return .split(splitState)
         }
+    }
+
+    private func normalizedInitialDividerPosition(_ position: CGFloat?) -> CGFloat {
+        guard let position else { return 0.5 }
+        return min(max(position, 0.1), 0.9)
     }
 
     /// Close a pane and collapse the split
