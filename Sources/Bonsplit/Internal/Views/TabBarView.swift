@@ -2517,6 +2517,18 @@ struct TabBarDragZoneView: NSViewRepresentable {
 
             if !isMinimalMode {
                 clearPendingWindowDrag()
+                if event.clickCount == 1 {
+                    if !isFocusedPane, onSingleClick?() == true {
+#if DEBUG
+                        dlog("tab.bar.dragZone.focusPane")
+#endif
+                    } else {
+#if DEBUG
+                        dlog("tab.bar.dragZone.click skipped reason=standardSingleClick clickCount=\(event.clickCount)")
+#endif
+                    }
+                    return
+                }
                 if event.clickCount >= 2 {
                     if onDoubleClick?() == true {
 #if DEBUG
@@ -2526,7 +2538,7 @@ struct TabBarDragZoneView: NSViewRepresentable {
                     }
                 }
 #if DEBUG
-                dlog("tab.bar.dragZone.click skipped reason=standardSingleClick clickCount=\(event.clickCount)")
+                dlog("tab.bar.dragZone.click skipped reason=standardUnhandledClick clickCount=\(event.clickCount)")
 #endif
                 return
             }
