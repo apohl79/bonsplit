@@ -2138,8 +2138,11 @@ private struct TabBarManualReorderTrackingView: NSViewRepresentable {
             }
 
             withTransaction(Transaction(animation: nil)) {
-                pane.moveTab(from: currentSourceIndex, to: targetIndex)
-                bonsplitController.focusPane(pane.id)
+                _ = bonsplitController.moveTab(
+                    TabID(id: session.sourceTab.id),
+                    toPane: pane.id,
+                    atIndex: targetIndex
+                )
             }
         }
 
@@ -3070,7 +3073,11 @@ struct TabDropDelegate: DropDelegate {
                     if targetIndex == sourceIndex || targetIndex == sourceIndex + 1 {
                         return
                     }
-                    pane.moveTab(from: sourceIndex, to: targetIndex)
+                    _ = bonsplitController.moveTab(
+                        TabID(id: draggedTab.id),
+                        toPane: pane.id,
+                        atIndex: targetIndex
+                    )
                 } else {
                     _ = bonsplitController.moveTab(
                         TabID(id: draggedTab.id),
