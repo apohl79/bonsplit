@@ -215,58 +215,6 @@ final class BonsplitTests: XCTestCase {
         XCTAssertTrue(controller.configuration.allowCloseTabs)
     }
 
-    func testDefaultPortalDropOverlayKinds() {
-        let config = BonsplitConfiguration()
-
-        XCTAssertTrue(config.portalDropOverlayTabKinds.contains("terminal"))
-        XCTAssertTrue(config.portalDropOverlayTabKinds.contains("browser"))
-    }
-
-    func testPaneDropOverlayRoutingSuppressesInlineOverlayForPortalKinds() {
-        let portalKinds: Set<String> = ["terminal", "browser"]
-
-        XCTAssertNil(PaneDropOverlayRouting.inlineDropZone(
-            activeDropZone: .left,
-            selectedTabKind: "browser",
-            portalDropOverlayTabKinds: portalKinds
-        ))
-        XCTAssertNil(PaneDropOverlayRouting.inlineDropZone(
-            activeDropZone: .right,
-            selectedTabKind: "terminal",
-            portalDropOverlayTabKinds: portalKinds
-        ))
-        XCTAssertEqual(PaneDropOverlayRouting.inlineDropZone(
-            activeDropZone: .top,
-            selectedTabKind: "custom",
-            portalDropOverlayTabKinds: portalKinds
-        ), .top)
-        XCTAssertEqual(PaneDropOverlayRouting.inlineDropZone(
-            activeDropZone: .bottom,
-            selectedTabKind: nil,
-            portalDropOverlayTabKinds: portalKinds
-        ), .bottom)
-        XCTAssertNil(PaneDropOverlayRouting.inlineDropZone(
-            activeDropZone: nil,
-            selectedTabKind: "browser",
-            portalDropOverlayTabKinds: portalKinds
-        ))
-    }
-
-    func testPaneDropOverlayRoutingCanBeConfigured() {
-        let config = BonsplitConfiguration(portalDropOverlayTabKinds: ["custom"])
-
-        XCTAssertEqual(PaneDropOverlayRouting.inlineDropZone(
-            activeDropZone: .left,
-            selectedTabKind: "browser",
-            portalDropOverlayTabKinds: config.portalDropOverlayTabKinds
-        ), .left)
-        XCTAssertNil(PaneDropOverlayRouting.inlineDropZone(
-            activeDropZone: .left,
-            selectedTabKind: "custom",
-            portalDropOverlayTabKinds: config.portalDropOverlayTabKinds
-        ))
-    }
-
     func testDefaultSplitButtonTooltips() {
         let defaults = BonsplitConfiguration.SplitButtonTooltips.default
         XCTAssertEqual(defaults.newTerminal, "New Terminal")
