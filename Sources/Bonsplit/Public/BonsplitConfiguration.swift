@@ -500,6 +500,10 @@ extension BonsplitConfiguration {
         /// that would create visibly different translucent layers.
         public var usesSharedBackdrop: Bool
 
+        /// Optional thickness (in points) for the divider drawn between panes.
+        /// When unset, Bonsplit uses NSSplitView's native thin-style thickness (1pt).
+        public var paneDividerThicknessPoints: CGFloat?
+
         // MARK: - Presets
 
         public static let `default` = Appearance()
@@ -539,7 +543,8 @@ extension BonsplitConfiguration {
             animationDuration: Double = 0.15,
             enableAnimations: Bool = true,
             chromeColors: ChromeColors = .init(),
-            usesSharedBackdrop: Bool = false
+            usesSharedBackdrop: Bool = false,
+            paneDividerThicknessPoints: CGFloat? = nil
         ) {
             self.tabBarHeight = tabBarHeight
             self.tabMinWidth = tabMinWidth
@@ -559,6 +564,7 @@ extension BonsplitConfiguration {
             self.enableAnimations = enableAnimations
             self.chromeColors = chromeColors
             self.usesSharedBackdrop = usesSharedBackdrop
+            self.paneDividerThicknessPoints = paneDividerThicknessPoints
         }
 
         private static func uniqueSplitButtons(_ buttons: [SplitActionButton]) -> [SplitActionButton] {

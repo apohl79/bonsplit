@@ -5,9 +5,23 @@ private var splitContainerProgrammaticSyncDepth = 0
 
 private class ThemedSplitView: NSSplitView {
     var customDividerColor: NSColor?
+    var customDividerThickness: CGFloat?
 
     override var dividerColor: NSColor {
         customDividerColor ?? super.dividerColor
+    }
+
+    override var dividerThickness: CGFloat {
+        customDividerThickness ?? super.dividerThickness
+    }
+
+    override func drawDivider(in rect: NSRect) {
+        if let color = customDividerColor {
+            color.setFill()
+            rect.fill()
+        } else {
+            super.drawDivider(in: rect)
+        }
     }
 
     override var isOpaque: Bool { false }
@@ -120,7 +134,8 @@ struct SplitContainerView<Content: View, EmptyContent: View>: NSViewRepresentabl
 #else
         let splitView = ThemedSplitView()
 #endif
-        splitView.customDividerColor = TabBarColors.nsColorSeparator(for: appearance)
+        splitView.customDividerColor = TabBarColors.nsColorPaneDivider(for: appearance)
+        splitView.customDividerThickness = appearance.paneDividerThicknessPoints
         splitView.isVertical = splitState.orientation == .horizontal
         splitView.dividerStyle = .thin
         splitView.delegate = context.coordinator
@@ -323,7 +338,14 @@ struct SplitContainerView<Content: View, EmptyContent: View>: NSViewRepresentabl
         splitView.wantsLayer = true
         splitView.layer?.backgroundColor = NSColor.clear.cgColor
         splitView.layer?.isOpaque = false
-        (splitView as? ThemedSplitView)?.customDividerColor = TabBarColors.nsColorSeparator(for: appearance)
+        if let themed = splitView as? ThemedSplitView {
+            themed.customDividerColor = TabBarColors.nsColorPaneDivider(for: appearance)
+            let nextThickness = appearance.paneDividerThicknessPoints
+            if themed.customDividerThickness != nextThickness {
+                themed.customDividerThickness = nextThickness
+                themed.adjustSubviews()
+            }
+        }
 
         // Update orientation if changed
         splitView.isVertical = splitState.orientation == .horizontal

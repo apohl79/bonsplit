@@ -253,18 +253,19 @@ enum TabBarColors {
     }
 
     static func nsColorSeparator(for appearance: BonsplitConfiguration.Appearance) -> NSColor {
+        // Use macOS's canonical separator color so dividers stay visible across
+        // light/dark themes regardless of the tab-bar background hex. The
+        // upstream derived-tone path produced near-invisible separators on
+        // dark terminal backgrounds.
+        _ = appearance
+        return .separatorColor
+    }
+
+    static func nsColorPaneDivider(for appearance: BonsplitConfiguration.Appearance) -> NSColor {
         if let explicit = chromeBorderColor(for: appearance) {
             return explicit
         }
-
-        guard let custom = tabBarBackgroundColor(for: appearance) else {
-            return .separatorColor
-        }
-        let alpha: CGFloat = custom.isBonsplitLightColor ? 0.26 : 0.36
-        let tone = custom.isBonsplitLightColor
-            ? custom.bonsplitDarken(by: 0.12)
-            : custom.bonsplitLighten(by: 0.16)
-        return tone.withAlphaComponent(alpha)
+        return nsColorSeparator(for: appearance)
     }
 
     static var dropIndicator: Color {
