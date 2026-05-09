@@ -48,6 +48,20 @@ enum PaneDropLifecycle {
     case hovering
 }
 
+enum PaneDropOverlayRouting {
+    static func inlineDropZone(
+        activeDropZone: DropZone?,
+        selectedTabKind: String?,
+        portalDropOverlayTabKinds: Set<String>
+    ) -> DropZone? {
+        guard let selectedTabKind,
+              portalDropOverlayTabKinds.contains(selectedTabKind) else {
+            return activeDropZone
+        }
+        return nil
+    }
+}
+
 private struct PaneDropPlaceholderOverlay: View {
     let zone: DropZone?
     let size: CGSize
@@ -213,12 +227,20 @@ struct PaneContainerView<Content: View, EmptyContent: View>: View {
 
     @ViewBuilder
     private var contentAreaWithDropZones: some View {
-        PaneDropInteractionContainer(activeDropZone: activeDropZone) {
+        PaneDropInteractionContainer(activeDropZone: inlineDropZone) {
             contentArea
         } dropLayer: { size in
             // Drop zones layer (above content, receives drops and taps)
             dropZonesLayer(size: size)
         }
+    }
+
+    private var inlineDropZone: DropZone? {
+        PaneDropOverlayRouting.inlineDropZone(
+            activeDropZone: activeDropZone,
+            selectedTabKind: (pane.selectedTab ?? pane.tabs.first)?.kind,
+            portalDropOverlayTabKinds: bonsplitController.configuration.portalDropOverlayTabKinds
+        )
     }
 
     // MARK: - Content Area

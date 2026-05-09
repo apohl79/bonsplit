@@ -53,6 +53,10 @@ public struct BonsplitConfiguration: Sendable {
     /// Controls where new tabs are inserted in the tab list
     public var newTabPosition: NewTabPosition
 
+    /// Tab kind identifiers whose content renders the pane drop overlay from
+    /// `paneDropZone`, above portal-hosted AppKit surfaces.
+    public var portalDropOverlayTabKinds: Set<String>
+
     // MARK: - Appearance
 
     /// Tab bar appearance customization
@@ -85,6 +89,7 @@ public struct BonsplitConfiguration: Sendable {
         autoCloseEmptyPanes: Bool = true,
         contentViewLifecycle: ContentViewLifecycle = .recreateOnSwitch,
         newTabPosition: NewTabPosition = .current,
+        portalDropOverlayTabKinds: Set<String> = ["terminal", "browser"],
         appearance: Appearance = .default
     ) {
         self.allowSplits = allowSplits
@@ -95,6 +100,7 @@ public struct BonsplitConfiguration: Sendable {
         self.autoCloseEmptyPanes = autoCloseEmptyPanes
         self.contentViewLifecycle = contentViewLifecycle
         self.newTabPosition = newTabPosition
+        self.portalDropOverlayTabKinds = portalDropOverlayTabKinds
         self.appearance = appearance
     }
 }
