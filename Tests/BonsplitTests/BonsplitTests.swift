@@ -1454,6 +1454,21 @@ final class BonsplitTests: XCTestCase {
         XCTAssertNil(spy.requestedPaneId)
     }
 
+    @MainActor
+    func testTabBarVisibilityDefaultsToAlways() throws {
+        XCTAssertEqual(BonsplitConfiguration().tabBarVisibility, .always)
+        XCTAssertTrue(try XCTUnwrap(renderedPaneContainerHasTabBar(tabCount: 0, visibility: .always)))
+        XCTAssertTrue(try XCTUnwrap(renderedPaneContainerHasTabBar(tabCount: 1, visibility: .always)))
+        XCTAssertTrue(try XCTUnwrap(renderedPaneContainerHasTabBar(tabCount: 2, visibility: .always)))
+    }
+
+    @MainActor
+    func testMultipleTabsVisibilityHidesPaneBarUntilThereAreMultipleTabs() throws {
+        XCTAssertFalse(try XCTUnwrap(renderedPaneContainerHasTabBar(tabCount: 0, visibility: .multipleTabs)))
+        XCTAssertFalse(try XCTUnwrap(renderedPaneContainerHasTabBar(tabCount: 1, visibility: .multipleTabs)))
+        XCTAssertTrue(try XCTUnwrap(renderedPaneContainerHasTabBar(tabCount: 2, visibility: .multipleTabs)))
+    }
+
     func testIconSaturationKeepsRasterFaviconInColorWhenInactive() {
         XCTAssertEqual(
             TabItemStyling.iconSaturation(hasRasterIcon: true, tabSaturation: 0.0),
@@ -2289,7 +2304,7 @@ final class BonsplitTests: XCTestCase {
     }
 
     @MainActor
-    func testTabBarDragZoneSingleClickDoesNotBlockLaterDoubleClickInMinimalMode() throws {
+    func testTabBarDragZoneMinimalModeNeverRequestsNewTabAfterSingleThenDoubleClick() throws {
         let view = TabBarDragZoneView.DragNSView(frame: NSRect(x: 0, y: 0, width: 160, height: 30))
         view.isMinimalMode = true
         view.isFocusedPane = true
@@ -2332,12 +2347,12 @@ final class BonsplitTests: XCTestCase {
         view.mouseUp(with: firstUp)
         view.mouseDown(with: doubleClick)
 
-        XCTAssertTrue(requestedNewTab, "A prior single click must not leave the drag zone unable to handle double-clicks")
+        XCTAssertFalse(requestedNewTab, "Minimal-mode drag zone double-clicks must not request new tabs")
         XCTAssertFalse(dragged, "A plain click followed by a double-click should not start a window drag")
     }
 
     @MainActor
-    func testTabBarDragZoneDoubleClickRequestsNewTabInMinimalMode() throws {
+    func testTabBarDragZoneDoubleClickDoesNotRequestNewTabInMinimalMode() throws {
         let view = TabBarDragZoneView.DragNSView(frame: NSRect(x: 0, y: 0, width: 160, height: 30))
         view.isMinimalMode = true
         view.isFocusedPane = true
@@ -2370,12 +2385,12 @@ final class BonsplitTests: XCTestCase {
         let event = try makeLeftMouseDownEvent(in: view, at: NSPoint(x: 20, y: 15), clickCount: 2)
         view.mouseDown(with: event)
 
-        XCTAssertTrue(requestedNewTab, "Minimal-mode drag zone double-click should request the new-tab action")
+        XCTAssertFalse(requestedNewTab, "Minimal-mode drag zone double-click should behave like titlebar chrome, not new-tab chrome")
         XCTAssertFalse(dragged, "Minimal-mode double-click should not start a window drag")
     }
 
     @MainActor
-    func testTabBarDragZoneSingleClickRequestsNewTabInStandardMode() throws {
+    func testTabBarDragZoneSingleClickDoesNotRequestNewTabInStandardMode() throws {
         let view = TabBarDragZoneView.DragNSView(frame: NSRect(x: 0, y: 0, width: 160, height: 30))
         view.isMinimalMode = false
         view.isFocusedPane = true
@@ -2408,8 +2423,52 @@ final class BonsplitTests: XCTestCase {
         let event = try makeLeftMouseDownEvent(in: view, at: NSPoint(x: 20, y: 15), clickCount: 1)
         view.mouseDown(with: event)
 
-        XCTAssertEqual(newTabCount, 1, "Standard-mode drag zone single click should immediately request a new tab")
+        XCTAssertEqual(newTabCount, 0, "Standard-mode drag zone single click should wait for a double-click before creating a tab")
         XCTAssertFalse(dragged, "Standard-mode drag zone single click should not begin a window drag")
+    }
+
+    @MainActor
+    func testTabBarDragZoneSingleClickFocusesInactivePaneInStandardMode() throws {
+        let view = TabBarDragZoneView.DragNSView(frame: NSRect(x: 0, y: 0, width: 160, height: 30))
+        view.isMinimalMode = false
+        view.isFocusedPane = false
+
+        var focused = false
+        var newTabCount = 0
+        var dragged = false
+        view.onSingleClick = {
+            focused = true
+            return true
+        }
+        view.onDoubleClick = {
+            newTabCount += 1
+            return true
+        }
+        view.performWindowDrag = { _ in
+            dragged = true
+            return true
+        }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 200, height: 60),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        defer { window.orderOut(nil) }
+        guard let contentView = window.contentView else {
+            XCTFail("Expected content view")
+            return
+        }
+
+        contentView.addSubview(view)
+        window.makeKeyAndOrderFront(nil)
+        let event = try makeLeftMouseDownEvent(in: view, at: NSPoint(x: 20, y: 15), clickCount: 1)
+        view.mouseDown(with: event)
+
+        XCTAssertTrue(focused, "Standard-mode inactive-pane single click should focus the pane")
+        XCTAssertEqual(newTabCount, 0, "Standard-mode inactive-pane single click should not create a tab")
+        XCTAssertFalse(dragged, "Standard-mode inactive-pane single click should not begin a window drag")
     }
 
     @MainActor
@@ -2451,7 +2510,35 @@ final class BonsplitTests: XCTestCase {
         view.mouseUp(with: firstUp)
         view.mouseDown(with: secondDown)
 
-        XCTAssertEqual(newTabCount, 1, "A standard-mode double-click must only create one tab; the clickCount=2 follow-up should be deduped")
+        XCTAssertEqual(newTabCount, 1, "A standard-mode double-click should create exactly one tab")
+    }
+
+    @MainActor
+    func testTabBarTrailingEmptyChromeCapturesOnlyEmptyArea() throws {
+        let view = TabBarDragZoneView.DragNSView(frame: NSRect(x: 0, y: 0, width: 320, height: 30))
+        view.hitRegion = .trailingEmptyChrome(
+            tabFrames: [CGRect(x: 10, y: 0, width: 90, height: 30)],
+            reservedTrailingWidth: 48
+        )
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 60),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        defer { window.orderOut(nil) }
+        guard let contentView = window.contentView else {
+            XCTFail("Expected content view")
+            return
+        }
+
+        contentView.addSubview(view)
+        window.makeKeyAndOrderFront(nil)
+        view.hitTestEventTypeOverride = .leftMouseDown
+        XCTAssertNil(view.hitTest(NSPoint(x: 40, y: 15)), "The empty chrome catcher must not cover tabs")
+        XCTAssertNil(view.hitTest(NSPoint(x: 300, y: 15)), "The empty chrome catcher must not cover the action button lane")
+        XCTAssertIdentical(view.hitTest(NSPoint(x: 140, y: 15)), view)
     }
 
     @MainActor
@@ -2535,6 +2622,44 @@ final class BonsplitTests: XCTestCase {
         }
         for subview in root.subviews {
             if let match = firstDescendant(ofType: type, in: subview) {
+                return match
+            }
+        }
+        return nil
+    }
+
+    @MainActor
+    private func waitForDescendant<T: NSView>(
+        ofType type: T.Type,
+        in root: NSView,
+        timeout: TimeInterval = 1.0,
+        where predicate: (T) -> Bool = { _ in true }
+    ) -> T? {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            root.layoutSubtreeIfNeeded()
+            if let match = firstDescendant(
+                ofType: type,
+                in: root,
+                where: predicate
+            ) {
+                return match
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        } while Date() < deadline
+        return firstDescendant(ofType: type, in: root, where: predicate)
+    }
+
+    private func firstDescendant<T: NSView>(
+        ofType type: T.Type,
+        in root: NSView,
+        where predicate: (T) -> Bool
+    ) -> T? {
+        if let match = root as? T, predicate(match) {
+            return match
+        }
+        for subview in root.subviews {
+            if let match = firstDescendant(ofType: type, in: subview, where: predicate) {
                 return match
             }
         }
@@ -3226,6 +3351,64 @@ final class BonsplitTests: XCTestCase {
         contentView.layoutSubtreeIfNeeded()
 
         return extract(hostingView)
+    }
+
+    @MainActor
+    private func renderedPaneContainerHasTabBar(
+        tabCount: Int,
+        visibility: TabBarVisibility
+    ) -> Bool? {
+        let controller = BonsplitController(
+            configuration: BonsplitConfiguration(tabBarVisibility: visibility)
+        )
+        guard let pane = controller.internalController.rootNode.allPanes.first else { return nil }
+
+        let tabs = (0..<tabCount).map { index in
+            TabItem(title: "Tab \(index + 1)", icon: nil)
+        }
+        pane.tabs = tabs
+        pane.selectedTabId = tabs.first?.id
+
+        let size = NSSize(width: 320, height: 180)
+        let hostingView = NSHostingView(
+            rootView: PaneContainerView(
+                pane: pane,
+                controller: controller.internalController,
+                contentBuilder: { _, _ in Color.clear },
+                emptyPaneBuilder: { _ in Color.clear },
+                showSplitButtons: false,
+                tabBarVisibility: visibility
+            )
+            .environment(controller)
+            .environment(controller.internalController)
+        )
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: size),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        defer { window.orderOut(nil) }
+        guard let contentView = window.contentView else { return nil }
+
+        contentView.wantsLayer = true
+        contentView.layer?.backgroundColor = NSColor.clear.cgColor
+        hostingView.frame = NSRect(origin: .zero, size: size)
+        hostingView.autoresizingMask = [.width, .height]
+        contentView.addSubview(hostingView)
+
+        window.makeKeyAndOrderFront(nil)
+        contentView.layoutSubtreeIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        contentView.layoutSubtreeIfNeeded()
+
+        return waitForDescendant(
+            ofType: TabBarDragZoneView.DragNSView.self,
+            in: hostingView,
+            timeout: 0.1
+        ) != nil
     }
 
     @MainActor
